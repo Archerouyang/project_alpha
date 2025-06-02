@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingView Chart</title>
+    <!-- Using a specific version for stability, you can update as needed -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #131722; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; }
+        #chart-container-wrapper {
+            display: flex;
+            flex-direction: column;
+            width: 1280px; /* Fixed width for screenshot consistency */
+            height: 720px; /* Fixed height for screenshot consistency */
+            background-color: #131722;
+        }
+        .chart-title {
+            color: #efefef;
+            padding: 10px;
+            font-size: 16px;
+            text-align: center;
+            background-color: #1e222d;
+            border-bottom: 1px solid #2a2e39;
+        }
+        #main-chart-container, #volume-pane-container, #stochrsi-pane-container {
+            width: 100%;
+            position: relative; /* For watermarks or other absolute positioned elements if needed */
+        }
+        #main-chart-container { height: 60%; } /* Main chart takes more space */
+        #volume-pane-container { height: 20%; }
+        #stochrsi-pane-container { height: 20%; }
+
+        /* Ensure charts inside containers take full size */
+        #main-chart, #volume-pane, #stochrsi-pane {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="chart-container-wrapper">
+        <div class="chart-title" id="chart-title-text">Trading Chart</div>
+        <div id="main-chart-container">
+            <div id="main-chart"></div>
+        </div>
+        <div id="volume-pane-container">
+            <div id="volume-pane"></div>
+        </div>
+        <div id="stochrsi-pane-container">
+            <div id="stochrsi-pane"></div>
+        </div>
+    </div>
+
+    <script>
+        // Declare chart variables in a broader scope to allow linking
+        let mainChart = null;
+        let volumeChart = null;
+        let stochRsiChart = null;
+
+        window.renderChart = function(
+            ohlcvData,      // {time, open, high, low, close}
+            volumeData,     // {time, value, color}
+            stochRsiKData,  // {time, value} for StochRSI %K
+            stochRsiDData,  // {time, value} for StochRSI %D
+            ema50Data,      // {time, value}
+            ema200Data,     // {time, value}
+            tickerSymbol,
+            chartWidth = 1280,
+            chartHeight = 720 // Overall wrapper height, actual chart heights are by percentage
+        ) {
+            // Set title
+            document.getElementById('chart-title-text').textContent = `${tickerSymbol} - 1H Chart with Indicators`;
+            
+            const wrapper = document.getElementById('chart-container-wrapper');
+            wrapper.style.width = chartWidth + 'px';
+            // wrapper.style.height = chartHeight + 'px'; // Height is controlled by sum of percentages
+
+            const chartOptions = {
+                layout: {
+                    background: { type: 'solid', color: '#131722' },
+                    textColor: '#D9D9D9',
+                },
+                grid: {
+                    vertLines: { color: '#2A2E39' },
+                    horzLines: { color: '#2A2E39' },
+                },
+                timeScale: {
+                    borderColor: '#4A4E5B',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                localization: {
+                    priceFormatter: price => {
+                        // Basic price formatter, can be enhanced
+                        if (price < 1) return price.toFixed(6);
+                        if (price < 100) return price.toFixed(2);
+                        return Math.round(price).toString();
+                    }
+                }
+            };
+
+            // --- Main Chart (OHLCV + EMAs) ---
+            const mainChartContainer = document.getElementById('main-chart');
+            mainChart = LightweightCharts.createChart(mainChartContainer, {
+                ...chartOptions,
+                width: mainChartContainer.clientWidth,
+                height: mainChartContainer.clientHeight,
+                // Main chart has price scale on the right
+                rightPriceScale: {
+                    borderColor: '#4A4E5B',
+                },
+            });
+
+            const candlestickSeries = mainChart.addCandlestickSeries({
+                upColor: 'rgba(0, 150, 136, 1)',    // Green
+                downColor: 'rgba(255, 82, 82, 1)',  // Red
+                borderVisible: false,
+                wickUpColor: 'rgba(0, 150, 136, 1)',
+                wickDownColor: 'rgba(255, 82, 82, 1)',
+            });
+            candlestickSeries.setData(ohlcvData);
+
+            if (ema50Data && ema50Data.length > 0) {
+                const ema50Series = mainChart.addLineSeries({
+                    color: 'rgba(255, 204, 0, 0.8)', // Yellow
+                    lineWidth: 2,
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                });
+                ema50Series.setData(ema50Data);
+            }
+
+            if (ema200Data && ema200Data.length > 0) {
+                const ema200Series = mainChart.addLineSeries({
+                    color: 'rgba(173, 216, 230, 0.8)', // Light Blue
+                    lineWidth: 2,
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                });
+                ema200Series.setData(ema200Data);
+            }
+            mainChart.timeScale().fitContent();
+
+            // --- Volume Pane ---
+            const volumePaneContainer = document.getElementById('volume-pane');
+            volumeChart = LightweightCharts.createChart(volumePaneContainer, {
+                ...chartOptions,
+                width: volumePaneContainer.clientWidth,
+                height: volumePaneContainer.clientHeight,
+                // Volume chart has price scale on the right, can be configured not to show labels if desired
+                rightPriceScale: {
+                    borderColor: '#4A4E5B',
+                    // visible: false // Optionally hide price scale for volume
+                },
+            });
+            const volumeSeries = volumeChart.addHistogramSeries({
+                priceFormat: { type: 'volume' },
+                priceScaleId: '', // set as an overlay by setting a blank priceScaleId
+            });
+            volumeSeries.setData(volumeData); // Assumes volumeData has {time, value, color}
+             // Configure the pane for overlay on the main chart if needed, or keep separate.
+            // For true separate panes linked by time, we create separate chart objects.
+            // And then link their time scales.
+            volumeChart.timeScale().applyOptions({ rightOffset: mainChart.timeScale().options().rightOffset });
+
+
+            // --- StochRSI Pane ---
+            const stochRsiPaneContainer = document.getElementById('stochrsi-pane');
+            stochRsiChart = LightweightCharts.createChart(stochRsiPaneContainer, {
+                ...chartOptions,
+                width: stochRsiPaneContainer.clientWidth,
+                height: stochRsiPaneContainer.clientHeight,
+                rightPriceScale: {
+                    borderColor: '#4A4E5B',
+                    // Custom price scale for 0-100 range typically
+                     scaleMargins: { top: 0.1, bottom: 0.1 },
+                },
+            });
+
+            if (stochRsiKData && stochRsiKData.length > 0) {
+                const stochRsiKSeries = stochRsiChart.addLineSeries({
+                    color: 'rgba(75, 192, 192, 0.8)', // Teal
+                    lineWidth: 1.5,
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                });
+                stochRsiKSeries.setData(stochRsiKData);
+            }
+
+            if (stochRsiDData && stochRsiDData.length > 0) {
+                const stochRsiDSeries = stochRsiChart.addLineSeries({
+                    color: 'rgba(255, 99, 132, 0.8)', // Pink
+                    lineWidth: 1.5,
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                });
+                stochRsiDSeries.setData(stochRsiDData);
+            }
+            // Add overbought/oversold lines for StochRSI
+            // Example: stochRsiChart.addLineSeries({ baseValue: 80, color: 'red', lineStyle: LightweightCharts.LineStyle.Dashed })
+            // Example: stochRsiChart.addLineSeries({ baseValue: 20, color: 'green', lineStyle: LightweightCharts.LineStyle.Dashed })
+            stochRsiChart.timeScale().applyOptions({ rightOffset: mainChart.timeScale().options().rightOffset });
+
+
+            // --- Synchronize time scales ---
+            function synchronizeCrosshairs(sourceChart, targetCharts) {
+                sourceChart.subscribeCrosshairMove(param => {
+                    if (!param.time) return;
+                    targetCharts.forEach(targetChart => {
+                        if (targetChart) {
+                            targetChart.setCrosshairPosition(param.point ? param.point.y : 0, param.time, sourceChart);
+                        }
+                    });
+                });
+            }
+            
+            // Link main chart to others
+            mainChart.timeScale().subscribeVisibleTimeRangeChange(timeRange => {
+                if (volumeChart) volumeChart.timeScale().setVisibleRange(timeRange);
+                if (stochRsiChart) stochRsiChart.timeScale().setVisibleRange(timeRange);
+            });
+            synchronizeCrosshairs(mainChart, [volumeChart, stochRsiChart]);
+
+            // Link volume chart to others
+            volumeChart.timeScale().subscribeVisibleTimeRangeChange(timeRange => {
+                if (mainChart) mainChart.timeScale().setVisibleRange(timeRange);
+                if (stochRsiChart) stochRsiChart.timeScale().setVisibleRange(timeRange);
+            });
+            synchronizeCrosshairs(volumeChart, [mainChart, stochRsiChart]);
+            
+            // Link StochRSI chart to others
+            stochRsiChart.timeScale().subscribeVisibleTimeRangeChange(timeRange => {
+                if (mainChart) mainChart.timeScale().setVisibleRange(timeRange);
+                if (volumeChart) volumeChart.timeScale().setVisibleRange(timeRange);
+            });
+            synchronizeCrosshairs(stochRsiChart, [mainChart, volumeChart]);
+
+
+            // Optional: Adjust visible range to show a bit of future space
+            // mainChart.timeScale().scrollToPosition(-5, false); // scrolls 5 bars to the left from the last bar
+
+            // Call this to ensure chart is rendered before screenshot
+            return new Promise(resolve => setTimeout(resolve, 500)); // Small delay for rendering
+        };
+    </script>
+</body>
+</html> 
