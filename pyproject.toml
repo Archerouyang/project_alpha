@@ -1,0 +1,49 @@
+[project]
+name = "project_alpha"
+version = "0.1.0"
+description = "AI Technical Analysis Service"
+authors = [
+    {name = "Archerouyang", email = "hongjuoy0612@gmail.com"},
+]
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "langchain",
+    "langchain-openai", # Or other LLM provider specific packages like langchain-google-genai
+    "python-dotenv",    # For managing environment variables
+    "yfinance",         # For fetching stock data
+    "requests",         # For HTTP requests if data_fetcher needs it directly
+    # "playwright",     # If using Playwright for headless browser chart generation
+    # "beautifulsoup4", # If parsing HTML for chart generation or data scraping
+    # "lxml",           # Often used with beautifulsoup4
+]
+requires-python = ">=3.9"
+
+[project.scripts]
+dev = "uvicorn backend.app.main:app --reload --port 8000"
+# start = "uvicorn backend.app.main:app --host 0.0.0.0 --port 8000" # For production-like start
+
+[tool.uv]
+# uv specific configurations can go here if needed
+
+[tool.ruff]
+# Linting configuration (Ruff is often used with uv)
+line-length = 88
+select = ["E", "W", "F", "I", "UP", "C4", "ASYNC", "LOG"] # Example rule set
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.urls]
+Homepage = "https://github.com/Archerouyang/project_alpha"
+Documentation = "https://github.com/Archerouyang/project_alpha/blob/main/README.md"
+Repository = "https://github.com/Archerouyang/project_alpha.git"
+"Bug Tracker" = "https://github.com/Archerouyang/project_alpha/issues" 
