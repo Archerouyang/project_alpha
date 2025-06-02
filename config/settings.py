@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Load from .env file. Environment variable name should be ALPHA_VANTAGE_API_KEY
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
 
+    # Financial Modeling Prep API Key
+    FMP_API_KEY: Optional[str] = None
+
     # To load variables from a .env file (in the config/ directory)
     # The .env file should be in the same directory as this settings.py for this model_config
     # or adjust the path if .env is at project root.
@@ -89,6 +92,7 @@ settings = Settings()
 
 # --- BEGIN DEBUG PRINT ---
 print(f"[DEBUG settings.py] Loaded settings.ALPHA_VANTAGE_API_KEY: '{settings.ALPHA_VANTAGE_API_KEY}'")
+print(f"[DEBUG settings.py] Loaded settings.FMP_API_KEY: '{settings.FMP_API_KEY}'")
 # --- END DEBUG PRINT ---
 
 # You can add a simple check here for critical settings if needed when settings.py is loaded
