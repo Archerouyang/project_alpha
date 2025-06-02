@@ -186,7 +186,11 @@
       same "printed page" as the copyright notice for easier
       identification within third-party archives.
 
+<<<<<<< HEAD
    Copyright 2024 Archerouyang
+=======
+   Copyright 2025 Archerouyang
+>>>>>>> 1b49850c667a17de48d0ef14ab31517d94921907
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
