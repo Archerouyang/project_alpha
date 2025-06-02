@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Alpha - AI Stock Analysis</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>AI Stock Technical Analysis</h1>
+    </header>
+    <main>
+        <section id="input-section">
+            <label for="stock-code">Enter Stock Code (e.g., AAPL, MSFT):</label>
+            <input type="text" id="stock-code" name="stock-code" placeholder="AAPL">
+            <button id="analyze-button">Analyze</button>
+        </section>
+
+        <section id="results-section" style="display: none;">
+            <h2 id="report-title"></h2>
+            <div id="chart-container">
+                <h3>K-Line Chart</h3>
+                <img id="chart-image" src="" alt="Stock Chart">
+            </div>
+            <div id="analysis-container">
+                <h3>AI Technical Analysis</h3>
+                <p id="analysis-text"></p>
+            </div>
+        </section>
+        
+        <section id="loading-section" style="display: none;">
+            <p>Loading analysis...</p>
+        </section>
+
+        <section id="error-section" style="display: none;">
+            <p id="error-message"></p>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2024 Project Alpha by Archerouyang</p>
+    </footer>
+    <script src="static/js/app.js"></script>
+</body>
+</html> 
