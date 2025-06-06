@@ -1,194 +1,251 @@
 # backend/core/chart_generator.py
 import asyncio
+import os
 import pandas as pd
 import pandas_ta as ta
+from datetime import datetime, date
+from typing import Optional, Tuple, List, Dict, Any
+
 from playwright.async_api import async_playwright
-import os
-import json
-from typing import Optional, Dict, List, Any, Union
-from io import BytesIO
-from .data_fetcher import get_ohlcv_data # Use the OpenBB data fetcher
 
-class LightweightChartGenerator:
-    def __init__(self,
-                 template_dir: str = "backend/templates",
-                 output_dir: str = "generated_reports",
-                 default_chart_width: int = 1280, 
-                 default_chart_height: int = 720): # This height is for the wrapper
-        self.template_path = os.path.abspath(os.path.join(os.getcwd(), template_dir, "chart_template.html"))
-        self.output_dir = os.path.abspath(os.path.join(os.getcwd(), output_dir))
-        self.chart_width = default_chart_width
-        self.chart_height = default_chart_height 
-        os.makedirs(self.output_dir, exist_ok=True)
-        print(f"ChartGenerator initialized. Template: {self.template_path}, Output: {self.output_dir}")
+class ChartGenerator:
+    def __init__(self, output_dir: str = "generated_reports"):
+        self.output_dir = output_dir
+        # Resolve the path to the template relative to this script's location
+        self.template_path = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '..', 'templates', 'chart_template.html'
+        ))
         if not os.path.exists(self.template_path):
-            print(f"CRITICAL ERROR: Chart template not found at {self.template_path}. Check path.")
+            raise FileNotFoundError(f"Chart template not found at {self.template_path}")
+        print(f"ChartGenerator initialized. Template: {self.template_path}, Output: {self.output_dir}")
 
-    def _format_series_for_js(self, df_series: Optional[pd.Series]) -> List[Dict[str, Any]]:
-        """Helper to format a Pandas Series (time-indexed) into {time, value} list for JS."""
-        series_data = []
-        if df_series is None or df_series.empty:
-            return series_data
+    def _format_data_for_js(self, df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Formats the DataFrame for the Lightweight Charts library."""
+        ohlc_data = []
+        volume_data = []
+        stoch_k_data = []
+        stoch_d_data = []
+
+        # Ensure required columns exist, handling potential case differences
+        df.columns = [col.lower() for col in df.columns]
+        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        for col in required_cols:
+            if col not in df.columns:
+                raise ValueError(f"Required column '{col}' not found in DataFrame.")
+        
+        # Check if indicator columns exist before processing
+        has_stoch = 'stochk_14_3_3' in df.columns and 'stochd_14_3_3' in df.columns
+
+        for timestamp, row in df.iterrows():
+            # Convert date to datetime if necessary before getting timestamp
+            if isinstance(timestamp, date) and not isinstance(timestamp, datetime):
+                # For date objects, combine with midnight time to create datetime
+                timestamp = datetime.combine(timestamp, datetime.min.time())
             
-        for timestamp, value in df_series.items():
-            if pd.notna(value) and isinstance(timestamp, pd.Timestamp):
-                item = {"time": int(timestamp.timestamp()), "value": float(value)}
-                series_data.append(item)
-        return series_data
-
-    async def generate_chart_image(self, 
-                                   ticker_symbol: str, 
-                                   days: int = 20, 
-                                   interval: str = "1h",
-                                   return_bytes: bool = False) -> Union[str, BytesIO, None]:
-        print(f"Starting chart generation for {ticker_symbol} ({days}d, {interval}). Plan: EMA(50,200), StochRSI(14,3,3).")
+            time_unix = int(timestamp.timestamp())
+            
+            # OHLC and Volume data
+            ohlc_data.append({
+                "time": time_unix,
+                "open": row['open'],
+                "high": row['high'],
+                "low": row['low'],
+                "close": row['close']
+            })
+            volume_color = 'rgba(0, 150, 136, 0.6)' if row['close'] >= row['open'] else 'rgba(255, 82, 82, 0.6)'
+            volume_data.append({"time": time_unix, "value": row['volume'], "color": volume_color})
+            
+            # Stochastic RSI data
+            if has_stoch and pd.notna(row['stochk_14_3_3']) and pd.notna(row['stochd_14_3_3']):
+                stoch_k_data.append({"time": time_unix, "value": row['stochk_14_3_3']})
+                stoch_d_data.append({"time": time_unix, "value": row['stochd_14_3_3']})
         
-        ohlc_js_list, volume_js_list, raw_df, data_error = await get_ohlcv_data(
-            ticker_symbol, days_history=days, interval=interval
-        )
-
-        if data_error or raw_df is None or raw_df.empty:
-            print(f"Error fetching or insufficient data for {ticker_symbol}: {data_error or 'No data returned'}")
-            return None
+        print(f"Formatted OHLC data points: {len(ohlc_data)}")
+        print(f"Formatted Volume data points: {len(volume_data)}")
+        print(f"Formatted Stoch K data points: {len(stoch_k_data)}")
+        print(f"Formatted Stoch D data points: {len(stoch_d_data)}")
         
-        print(f"Data fetched for {ticker_symbol}, calculating indicators on {len(raw_df)} points...")
-        df = raw_df.copy()
+        return ohlc_data, volume_data, stoch_k_data, stoch_d_data
 
-        # Calculate EMA(50) and EMA(200)
-        df['EMA_50'] = df.ta.ema(length=50, close='close', append=False)
-        df['EMA_200'] = df.ta.ema(length=200, close='close', append=False)
+    def _calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculates and appends Bollinger Bands and StochRSI indicators."""
+        print(f"Calculating indicators on {len(df)} points...")
+        df_copy = df.copy() # Work on a copy to avoid side effects
+        try:
+            # Calculate Bollinger Bands
+            df_copy.ta.bbands(length=20, std=2, append=True)
+            
+            # Calculate Stochastic RSI
+            df_copy.ta.stochrsi(length=14, rsi_length=14, k=3, d=3, append=True)
+            
+            # Rename columns for clarity and consistency
+            rename_map = {
+                'BBL_20_2.0': 'bbl', # Lower Band
+                'BBM_20_2.0': 'bbm', # Middle Band
+                'BBU_20_2.0': 'bbu', # Upper Band
+                'STOCHRSIk_14_14_3_3': 'stochk_14_3_3',
+                'STOCHRSId_14_14_3_3': 'stochd_14_3_3'
+            }
+            df_copy.rename(columns=lambda c: rename_map.get(c, c), inplace=True)
+            
+            # Safely check for calculated columns before printing counts
+            bband_count = df_copy['bbm'].count() if 'bbm' in df_copy.columns else 0
+            stoch_count = df_copy['stochk_14_3_3'].count() if 'stochk_14_3_3' in df_copy.columns else 0
+            print(f"Indicators calculated. Bollinger Bands points: {bband_count}, StochRSI_K points: {stoch_count}")
 
-        # Calculate StochRSI(14, rsi_length=14, k=3, d=3)
-        # pandas-ta stochrsi returns two columns: STOCHRSIk_14_14_3_3 and STOCHRSId_14_14_3_3
-        stoch_rsi_df = df.ta.stochrsi(length=14, rsi_length=14, k=3, d=3, append=False)
-        if stoch_rsi_df is not None and not stoch_rsi_df.empty:
-            df['STOCHRSI_K'] = stoch_rsi_df.iloc[:, 0] # First column is K
-            df['STOCHRSI_D'] = stoch_rsi_df.iloc[:, 1] # Second column is D
-        else:
-            df['STOCHRSI_K'] = pd.NA
-            df['STOCHRSI_D'] = pd.NA
-            print(f"Warning: StochRSI calculation did not return data for {ticker_symbol}")
+        except Exception as e:
+            print(f"Error calculating indicators: {e}")
+        return df_copy # Return the modified copy
 
-        # Prepare data for JavaScript
-        ema50_js_data = self._format_series_for_js(df['EMA_50'])
-        ema200_js_data = self._format_series_for_js(df['EMA_200'])
-        stoch_rsi_k_js_data = self._format_series_for_js(df['STOCHRSI_K'])
-        stoch_rsi_d_js_data = self._format_series_for_js(df['STOCHRSI_D'])
-
-        print(f"Indicators calculated for {ticker_symbol}. EMA50 points: {len(ema50_js_data)}, StochRSI_K points: {len(stoch_rsi_k_js_data)}")
-
-        output_filename = f"{ticker_symbol.replace(':', '_').replace('/', '_')}_{interval}_chart.png"
-        output_filepath = os.path.join(self.output_dir, output_filename)
+    def _get_indicator_data_for_js(self, df: pd.DataFrame) -> Dict[str, List[Dict[str, Any]]]:
+        """Extracts indicator data into a format for JavaScript."""
+        indicator_data = {}
         
-        async with async_playwright() as p:
-            browser = None
-            page = None
-            try:
-                print(f"Playwright: Launching browser for {ticker_symbol}...")
-                browser = await p.chromium.launch(headless=True) # Keep headless=True for server
+        # Helper function to convert date to datetime if needed
+        def get_timestamp(dt_obj):
+            if isinstance(dt_obj, date) and not isinstance(dt_obj, datetime):
+                return int(datetime.combine(dt_obj, datetime.min.time()).timestamp())
+            return int(dt_obj.timestamp())
+
+        # Extract Bollinger Bands data
+        for band in ['bbu', 'bbm', 'bbl']:
+            if band in df.columns:
+                band_df = df[[band]].dropna().reset_index()
+                indicator_data[band] = band_df.apply(
+                    lambda row: {'time': get_timestamp(row['date']), 'value': row[band]}, axis=1
+                ).tolist()
+
+        print(f"Formatted BBU data points: {len(indicator_data.get('bbu', []))}")
+        print(f"Formatted BBM data points: {len(indicator_data.get('bbm', []))}")
+        print(f"Formatted BBL data points: {len(indicator_data.get('bbl', []))}")
+        
+        return indicator_data
+
+    async def generate_chart_from_df(self, raw_df: pd.DataFrame, ticker_symbol: str, interval: str) -> Optional[bytes]:
+        """
+        Generates a chart image from a given pandas DataFrame and returns the image bytes.
+        """
+        # 1. Calculate indicators
+        df_with_indicators = self._calculate_indicators(raw_df)
+
+        # 2. Format all data for JavaScript
+        ohlc_data, volume_data, stoch_k_data, stoch_d_data = self._format_data_for_js(df_with_indicators)
+        indicator_data = self._get_indicator_data_for_js(df_with_indicators)
+        
+        # 3. Create the chart using Playwright
+        print(f"Playwright: Launching browser for {ticker_symbol}...")
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
                 page = await browser.new_page()
-                
-                if not os.path.exists(self.template_path):
-                    print(f"CRITICAL ERROR: Chart HTML template file not found at {self.template_path}")
-                    return None # No finally block here as browser might not be initialized
-                
-                await page.goto(f"file://{self.template_path}")
-                print(f"Playwright: Loaded HTML template: file://{self.template_path}")
 
-                await page.wait_for_function("typeof window.renderChart === 'function'", timeout=10000)
-                print("Playwright: window.renderChart function is available.")
+                # Add a listener for console messages
+                page.on("console", lambda msg: print(f"Browser Console ({msg.type}): {msg.text}"))
 
-                # Construct the data payload for JS
-                js_render_args = [
-                    ohlc_js_list,
-                    volume_js_list,
-                    stoch_rsi_k_js_data,
-                    stoch_rsi_d_js_data,
-                    ema50_js_data,
-                    ema200_js_data,
-                    ticker_symbol,
-                    self.chart_width,
-                    self.chart_height # This is for the wrapper, JS calculates internal pane heights
-                ]
+                template_url = f"file://{self.template_path}"
+                print(f"Playwright: Loaded HTML template: {template_url}")
+                await page.goto(template_url)
                 
-                # This will call window.renderChart with arguments unpacked
-                await page.evaluate("([ohlcv, vol, stochK, stochD, ema50, ema200, ticker, width, height]) => window.renderChart(ohlcv, vol, stochK, stochD, ema50, ema200, ticker, width, height)", js_render_args)
+                await page.wait_for_function("typeof window.renderChart === 'function'")
+
+                # Call the JavaScript function to render the chart
+                # Ensure the data passed matches the structure expected by the JS function
+                await page.evaluate("""
+                    (args) => window.renderChart(args)
+                """, {
+                    "ohlcData": ohlc_data,
+                    "volumeData": volume_data,
+                    "stochKData": stoch_k_data,
+                    "stochDData": stoch_d_data,
+                    "bbuData": indicator_data.get('bbu', []),
+                    "bbmData": indicator_data.get('bbm', []),
+                    "bblData": indicator_data.get('bbl', []),
+                    "tickerSymbol": ticker_symbol.upper(),
+                    "interval": interval,
+                    "chartWidth": 1280,
+                    "chartHeight": 720
+                })
                 print(f"Playwright: Chart rendering initiated for {ticker_symbol} via JS call.")
-                
-                # The renderChart in HTML now returns a promise that resolves after a short timeout
-                # Playwright's evaluate will await this promise.
-                # We can add an additional explicit wait if needed, or wait for a custom signal.
-                await page.wait_for_timeout(1500) # Extra wait for complex rendering/slower systems
+
+                # Give the chart a moment to render before taking a screenshot
+                await page.wait_for_timeout(2000)
                 print(f"Playwright: Waited for rendering for {ticker_symbol}.")
 
-                chart_wrapper_element = await page.query_selector('#chart-container-wrapper')
-                if not chart_wrapper_element:
-                    print("Playwright ERROR: Chart wrapper #chart-container-wrapper not found after rendering attempt.")
-                    return None # No finally as browser might be an issue
-
-                image_bytes = await chart_wrapper_element.screenshot()
+                # Take a screenshot of the chart container element
+                chart_element = await page.query_selector('#chart-container-wrapper')
+                if not chart_element:
+                    raise RuntimeError("Could not find '#chart-container-wrapper' element in the HTML template.")
                 
-                if return_bytes:
-                    print(f"Playwright: Screenshot captured as bytes for {ticker_symbol}.")
-                    return BytesIO(image_bytes)
-                else:
-                    with open(output_filepath, "wb") as f:
-                        f.write(image_bytes)
-                    print(f"Playwright: Screenshot saved to {output_filepath}")
-                    return output_filepath
-            
-            except Exception as e:
-                print(f"Playwright error for {ticker_symbol}: {e}")
-                if page:
-                    try:
-                        page_content = await page.content()
-                        print(f"Page content at time of Playwright error ({ticker_symbol}):\\n{page_content[:1000]}...")
-                    except Exception as pe_content:
-                        print(f"Could not get page content after Playwright error: {pe_content}")
-                return None
-            finally:
-                if browser and browser.is_connected():
-                    await browser.close()
-                    print(f"Playwright: Browser closed for {ticker_symbol}.")
+                image_bytes = await chart_element.screenshot()
+                print(f"Playwright: Screenshot captured as bytes for {ticker_symbol}.")
+                
+                await browser.close()
+                print(f"Playwright: Browser closed for {ticker_symbol}.")
+
+                return image_bytes
+                
+        except Exception as e:
+            print(f"An error occurred during chart generation for {ticker_symbol}: {e}")
+            # Reraise to see full traceback in orchestrator
+            raise
 
 # Example Usage (Updated):
 async def main():
-    print("--- Testing LightweightChartGenerator (with Alpha Vantage & .env config) ---")
-    generator = LightweightChartGenerator(
-        template_dir="backend/templates", 
-        output_dir="generated_reports"
+    """
+    An example of how to use the ChartGenerator.
+    This will fetch data and then generate a chart image file.
+    """
+    print("--- Testing ChartGenerator ---")
+    
+    # 1. Import the data fetcher
+    # Placed here to avoid circular dependency issues if chart_generator is imported elsewhere
+    from backend.core.data_fetcher import get_ohlcv_data
+
+    # 2. Setup generator and test case
+    generator = ChartGenerator(output_dir="generated_reports")
+    ticker = "TSLA"
+    days = 30
+    interval = "1h"
+
+    print(f"\n--- Generating chart for {ticker} ({interval} for {days} days) ---")
+
+    # 3. Fetch data
+    # We get back both the formatted data for JS and the raw df for indicator calculation
+    js_data, raw_df = await get_ohlcv_data(ticker, days, interval)
+
+    if raw_df is None or raw_df.empty:
+        print(f"Could not fetch data for {ticker}. Aborting chart generation.")
+        return
+
+    # 4. Generate chart image from the raw DataFrame
+    image_bytes = await generator.generate_chart_from_df(
+        raw_df=raw_df, 
+        ticker_symbol=ticker,
+        interval=interval
     )
 
-    # Using only one test case to be mindful of potential API limits
-    test_cases = [
-        {"ticker": "IBM", "days": 30, "interval": "60min"}, 
-        # {"ticker": "MSFT", "days": 30, "interval": "1h"},      
-        # {"ticker": "BTC-USD", "days": 90, "interval": "4h"},   
-        # {"ticker": "ETH-USD", "days": 45, "interval": "30m"},  
-    ]
-
-    for case in test_cases:
-        ticker, days, interval = case["ticker"], case["days"], case["interval"]
-        print(f"\n--- Generating chart for {ticker} (days: {days}, interval: {interval}) --- (Save to file)")
+    # 5. Save the image to a file
+    if image_bytes:
+        if not os.path.exists(generator.output_dir):
+            os.makedirs(generator.output_dir)
         
-        # Delay already present in data_fetcher if multiple calls happen there.
-        # No need for an additional sleep here unless specifically testing chart_generator rate limits itself.
-        # await asyncio.sleep(5) 
+        # Sanitize ticker for filename
+        safe_ticker = ticker.replace("/", "_").replace(":", "_")
+        filename = f"{safe_ticker}_{interval}_{days}d_chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        filepath = os.path.join(generator.output_dir, filename)
         
-        filepath = await generator.generate_chart_image(ticker, days=days, interval=interval, return_bytes=False)
-        if filepath:
-            print(f"Chart for {ticker} ({interval}) saved to: {filepath}")
-        else:
-            print(f"FAILED to generate chart for {ticker} ({interval}).")
+        with open(filepath, "wb") as f:
+            f.write(image_bytes)
+        print(f"Chart for {ticker} saved successfully to: {filepath}")
+    else:
+        print(f"FAILED to generate chart image bytes for {ticker}.")
 
-    # Test return_bytes (optional, can be commented out to save API calls)
-    # print("\n--- Generating chart for NVDA (days: 7, interval: 1h) as bytes ---")
-    # await asyncio.sleep(15) # Alpha Vantage has 5 calls/min limit, ensure this doesn't overlap soon 
-    # image_bytes_io = await generator.generate_chart_image("NVDA", days=7, interval="1h", return_bytes=True)
-    # if image_bytes_io:
-    #     print(f"Chart for NVDA as BytesIO object: {type(image_bytes_io)}. Size: {image_bytes_io.getbuffer().nbytes} bytes.")
-    # else:
-    #     print("FAILED to generate chart for NVDA as bytes.")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    # Ensure the event loop is managed correctly
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"An error occurred in the main execution: {e}")
+        import traceback
+        traceback.print_exc()

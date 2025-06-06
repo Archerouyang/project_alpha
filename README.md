@@ -1,130 +1,78 @@
-# Project Alpha: AI Technical Analysis Service
+# AI Technical Analysis Service
 
-Project Alpha is an open-source service that provides AI-powered technical analysis for stocks.
+This project is a sophisticated financial analysis service that automatically generates technical analysis reports for stock tickers. It fetches the latest market data, creates detailed candlestick charts with technical indicators, generates an in-depth analysis using a Large Language Model (LLM), and combines them into a single, clean image-based report.
 
-Users can input a stock code, and the system will:
-1. Fetch recent K-line data (1-hour intervals over the last 20 days).
-2. Generate a K-line chart image with pre-set technical indicators using TradingView Lightweight Charts™.
-3. Analyze the chart image using a multimodal LLM (e.g., Gemini Pro Vision, GPT-4V) via LangChain.
-4. Produce a technical analysis report.
+## Features
 
-## Features (MVP)
+- **Automated Data Fetching**: Utilizes the OpenBB SDK to fetch historical OHLCV (Open, High, Low, Close, Volume) data for any given stock ticker.
+- **Advanced Chart Generation**: Renders high-quality financial charts using the TradingView Lightweight Charts library via Playwright for headless browser automation.
+- **Indicator Support**: Automatically calculates and overlays key technical indicators, including Bollinger Bands and Stochastic RSI.
+- **AI-Powered Analysis**: Leverages the DeepSeek API to generate a four-paragraph narrative analysis based on a sophisticated prompt grounded in established financial theories (Al Brooks Price Action, etc.).
+- **Report Composition**: Combines the generated chart and the AI analysis into a single, shareable image report.
+- **Modular Architecture**: Built with a clean, modular structure separating concerns for data fetching, chart generation, AI analysis, and orchestration.
 
-- Input stock code via a simple web interface.
-- Fetch 1-hour K-line data for the last 20 days.
-- Generate chart images (backend or headless browser).
-- LLM-based analysis of chart images.
-- Output report (Markdown, image, or simple HTML).
+## Technology Stack
 
-## Tech Stack
+- **Backend**: Python 3.11
+- **API/Framework**: FastAPI (scaffolding, not fully implemented)
+- **Data Source**: OpenBB SDK
+- **Chart Rendering**: Playwright & TradingView Lightweight Charts
+- **AI Analysis**: DeepSeek API (via the `openai` Python library)
+- **Image Manipulation**: Pillow (PIL) was used and later removed; final composition is handled via HTML/CSS rendering in Playwright.
+- **Dependency Management**: `uv`
 
-- **Frontend Charting**: TradingView Lightweight Charts™
-- **Backend Framework**: Python (FastAPI planned)
-- **LLM Interaction**: LangChain (Python)
-- **Data Fetching**: yfinance (or similar)
-- **Package Management**: uv
-- **Optional (Chart Generation)**: Playwright/Puppeteer if using headless browser
+---
 
-## Folder Structure
+## Setup and Installation
 
-```
-project_alpha/
-├── .gitignore
-├── pyproject.toml
-├── README.md
-├── backend/
-│   ├── app/
-│   │   ├── core/
-│   │   └── main.py
-│   ├── api/
-│   │   └── v1/
-│   │       ├── endpoints/
-│   │       └── schemas.py
-│   └── services/
-│       ├── chart_generator/
-│       │   └── templates/
-│       ├── data_fetcher/
-│       ├── llm_agent/
-│       │   └── prompts/
-│       └── report_generator/
-├── config/
-├── frontend/
-│   ├── css/
-│   └── js/
-├── scripts/
-├── utils/
-├── docs/
-├── tests/
-└── generated_reports/
-```
-
-For a detailed explanation of the folder structure, see [docs/architecture.md](docs/architecture.md) (to be created).
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.9+
-- uv (Python package installer and virtual environment manager)
-- Access to an LLM API (e.g., OpenAI, Google AI Studio) and an API key.
-
-### Installation & Setup
-
-1.  **Clone the repository:**
+1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/Archerouyang/project_alpha.git
+    git clone <your-repository-url>
     cd project_alpha
     ```
 
-2.  **Create a virtual environment and install dependencies using uv:**
+2.  **Create and Activate Virtual Environment**:
+    This project uses `uv` for fast dependency management.
     ```bash
+    # Install uv if you haven't already
+    pip install uv
+
+    # Create and activate the virtual environment
     uv venv
-    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-    uv pip install -r requirements.txt # Or 'uv pip install .' if pyproject.toml is fully configured
-    ```
-    *(Note: `uv pip install .` will use the `pyproject.toml` directly. If you prefer a `requirements.txt`, you can generate one using `uv pip freeze > requirements.txt` after installing dependencies initially listed in `pyproject.toml`)*
-
-3.  **Configure API Keys:**
-    *   Create a `.env` file in the `config/` directory by copying `config/.env.example` (you'll need to create this example file).
-    *   Add your LLM API key (e.g., `OPENAI_API_KEY="your_key_here"`) and any other necessary configurations to `.env`.
-    Example `config/.env.example`:
-    ```
-    # LLM Configuration
-    # OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-    # GEMINI_API_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-    # Data Fetcher Configuration
-    # ALPHA_VANTAGE_API_KEY="xxxxxxxxxxxxxxxx"
+    source .venv/bin/activate  # On Windows, use: .\.venv\Scripts\activate
     ```
 
-### Running the Development Server (FastAPI)
+3.  **Install Dependencies**:
+    ```bash
+    uv pip install -r requirements.txt
+    ```
 
-Once the backend is set up (see `backend/app/main.py`):
+4.  **Set Up API Keys**:
+    - Create a file named `.env` in the root of the project directory.
+    - Add your DeepSeek and OpenBB API keys to the `.env` file like this:
+      ```env
+      DEEPSEEK_API_KEY="your_deepseek_api_key"
+      OPENBB_API_KEY="your_openbb_api_key" 
+      ```
+    - The OpenBB key is loaded automatically by their SDK; the DeepSeek key is loaded by our application.
 
-```bash
-uv run dev
-```
+---
 
-This will typically start the server at `http://127.0.0.1:8000`.
+## How to Run
 
-## MVP Local Execution (Alternative)
+The main entry point for generating a report is the `orchestrator.py` script.
 
-For quick testing or if the web UI is not yet complete, you might use a script:
+-   **Run from the project root directory**:
+    ```bash
+    python -m backend.core.orchestrator
+    ```
+-   This will run the default test case for "TSLA" with a "1h" interval. The final report image will be saved in a timestamped folder inside the `generated_reports` directory.
 
-```bash
-python scripts/run_pipeline_local.py --stock AAPL
-```
+## To-Do / Future Enhancements
 
-## Contributing
-
-Contributions are welcome! Please read the `CONTRIBUTING.md` (to be created) for guidelines on how to contribute to this project.
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## License
-
-Distributed under the Apache-2.0 License. See `LICENSE` for more information. 
+- [ ] Implement a full FastAPI backend to expose report generation via an API endpoint.
+- [ ] Develop a user-facing frontend to input tickers and view reports.
+- [ ] Expand the range of supported technical indicators.
+- [ ] Implement multi-modal analysis by sending the chart image to a vision-capable LLM.
+- [ ] Add more robust error handling and logging.
+- [ ] Containerize the application with Docker for easier deployment. 
