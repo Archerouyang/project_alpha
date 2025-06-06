@@ -1,39 +1,59 @@
 # backend/core/llm_analyzer.py
 import os
 import asyncio
-from typing import Optional
+from typing import Optional, Dict, Any
 from openai import AsyncOpenAI
 
 def _get_system_prompt() -> str:
     """Returns the static system prompt for the financial analyst expert."""
     return """You are a professional financial technical analyst, an expert in Al Brooks' Price Action theory, Bollinger Bands, Volume Analysis, and the Stochastic RSI indicator. Your analytical style is decisive and professional, capable of integrating signals from different tools into a coherent analytical narrative and providing clear, actionable trading strategies."""
 
-def _get_user_prompt(ticker_symbol: str) -> str:
+def _format_key_data_for_prompt(key_data: Dict[str, Any]) -> str:
+    """Formats the key data dictionary into a string for the LLM prompt."""
+    if not key_data:
+        return "No key data provided."
+    
+    lines = [
+        "【关键价格与指标参考数据 (请优先使用以下数值进行分析)】",
+        f"最新收盘价: {key_data.get('latest_close', 'N/A')}",
+        f"图表周期内最高价: {key_data.get('period_high', 'N/A')}",
+        f"图表周期内最低价: {key_data.get('period_low', 'N/A')}",
+        f"布林带上轨: {key_data.get('bollinger_upper', 'N/A')}",
+        f"布林带中轨: {key_data.get('bollinger_middle', 'N/A')}",
+        f"布林带下轨: {key_data.get('bollinger_lower', 'N/A')}",
+        f"Stochastic RSI %K: {key_data.get('stoch_rsi_k', 'N/A')}",
+        f"Stochastic RSI %D: {key_data.get('stoch_rsi_d', 'N/A')}"
+    ]
+    return "\n".join(lines)
+
+def _get_user_prompt(ticker_symbol: str, key_data_str: str) -> str:
     """Returns the user prompt with the specified ticker symbol and instructions."""
-    return f"""Based on the stock ticker provided, you must strictly follow the specified analytical tools and report template structure below to generate a technical analysis report. NOTE: You will not be provided with a chart image; your analysis must be based on your general knowledge of the asset's recent price action and technicals.
+    return f"""{key_data_str}
 
-Mandatory Analytical Tools:
-Bollinger Bands: Use standard parameters (e.g., a 20-period Simple Moving Average as the middle band, with the upper and lower bands at +/- 2 standard deviations). Analyze the relationship between the price and the upper, middle, and lower bands; changes in the Bollinger Bandwidth (contraction/Squeeze or expansion); and signals when the price touches or breaks through the bands.
-Volume: Analyze changes in volume in conjunction with price movements to determine the health of the trend (e.g., high-volume breakout, low-volume pullback, price-volume divergence).
-Stochastic RSI (14): Use to identify overbought/oversold conditions (e.g., with standard parameters like 14,3,3 or 14,14,3,3) and potential momentum shift signals (bullish/bearish crossovers, divergence).
-Al Brooks Price Action Theory: Identify key Trend Bars, Signal Bars, Micro Channels, Pullbacks, Breakout Patterns, and major market structures (like Trend Channels or Trading Ranges). Pay special attention to the behavior of candlesticks at key Bollinger Band levels (e.g., middle, upper, and lower bands).
-Chart Patterns: Identify key support levels, resistance levels, trendlines, or simple patterns (like double tops/bottoms, flags) based on price action, and use the Bollinger Band boundaries to confirm these structures.
+基于以上提供的【关键价格与指标参考数据】以及您对该股票代码的总体了解，您必须严格遵循指定的分析工具和报告模板结构，生成一份技术分析报告。
+注意：您不会收到图表图片，您的分析必须基于您对该资产近期价格行为的总体知识，并严格使用我提供的数值。
 
-Report Template Structure & Writing Instructions:
-IMPORTANT: Your entire response must be written in flowing, holistic paragraphs. Do NOT use bullet points, numbered lists, or any list-like formatting. Each section of the report should be a well-integrated narrative. Your analysis should naturally progress through the following four themes, each in its own paragraph.
+**重要指令：** 在提及具体价格水平、支撑、阻力或指标数值时，**请务biyou优先引用和基于我提供的【关键价格与指标参考数据】中的数值**，以确保分析的准确性。
 
-First, provide an overall assessment of the trend and market condition. This should include a definitive judgment on the market's direction, a description of recent critical price action, confirmation with volume analysis, and a brief mention of the Stochastic RSI status.
+**分析工具（理论框架）:**
+Bollinger Bands: 分析价格与布林带三条轨道的关系，带宽的变化，以及价格触及或突破轨道时的信号。
+Volume: 结合价格变动分析成交量，以判断趋势的健康状况。
+Stochastic RSI (14): 识别超买/超卖状况及潜在的动能转换信号。
+Al Brooks Price Action Theory: 识别趋势K线、信号K线、微通道、回调、突破模式及主要市场结构。
+Chart Patterns: 识别关键的支撑、阻力、趋势线或简单形态。
 
-Second, analyze the price action and chart structure in detail. Apply Al Brooks' theory to identify the dominant market structure, pinpoint key support and resistance levels, and provide one or two potential upside or downside price target zones.
+**报告模板结构与撰写指令:**
+您的整个回应必须是流畅、完整的段落。**禁止使用项目符号、编号列表或任何类似列表的格式。** 报告的每一部分都应是一个整合良好的叙述。您的分析应自然地按以下四个主题展开，每个主题一段。
 
-Third, offer a comprehensive interpretation of the indicators. Synthesize the signals from Bollinger Bands, volume, and Stochastic RSI into a coherent chain of evidence, elaborating on the specific signals each is providing.
+首先，对趋势和市场状况进行总体评估。
+其次，详细分析价格行为和图表结构。
+第三，提供对各项指标的综合解读。
+最后，以清晰的交易策略和风险管理计划作结。
 
-Fourth, conclude with a clear trading strategy and risk management plan. State the core operational bias, provide actionable entry signals, define clear price targets and stop-loss levels, and mention an alternative scenario or conditions for adjusting the position.
+**开始生成**
+现在，请为以下目标生成分析报告:
 
-Begin Generation
-Now, please generate an analysis report for the following target:
-
-Stock Ticker: {ticker_symbol}"""
+股票代码: {ticker_symbol}"""
 
 
 def _get_deepseek_api_key() -> Optional[str]:
@@ -70,19 +90,21 @@ class LLMAnalyzer:
         )
         print("LLMAnalyzer initialized with DeepSeek model 'deepseek-r1-0528' via direct API.")
 
-    async def analyze_chart_image(self, image_bytes: bytes, ticker_symbol: str) -> Optional[str]:
+    async def analyze_chart_image(self, image_bytes: bytes, ticker_symbol: str, key_financial_data: dict) -> Optional[str]:
         """
-        Analyzes a ticker symbol using a direct API call to an OpenAI-compatible endpoint.
-        The image_bytes are ignored.
+        Analyzes a ticker symbol using a direct API call, prioritizing the provided key financial data.
+        The image_bytes are currently ignored.
         """
-        print(f"LLM Analyzer: Starting TEXT-ONLY analysis for {ticker_symbol}...")
+        print(f"LLM Analyzer: Starting TEXT-ONLY analysis for {ticker_symbol} with key data...")
         
         try:
+            key_data_str = _format_key_data_for_prompt(key_financial_data)
+            
             response = await self.client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": _get_system_prompt()},
-                    {"role": "user", "content": _get_user_prompt(ticker_symbol)},
+                    {"role": "user", "content": _get_user_prompt(ticker_symbol, key_data_str)},
                 ],
                 max_tokens=2048,
                 temperature=0.5,

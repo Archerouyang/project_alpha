@@ -49,7 +49,7 @@ class AnalysisOrchestrator:
             return
 
         # 2. Generate Chart Image from the dataframe
-        chart_image_bytes = await self.chart_generator.generate_chart_from_df(
+        chart_image_bytes, key_data = await self.chart_generator.generate_chart_from_df(
             raw_df=raw_df,
             ticker_symbol=ticker_symbol,
             interval=interval,
@@ -64,7 +64,11 @@ class AnalysisOrchestrator:
         print(f"Orchestrator: Chart image saved to {chart_image_path}")
 
         # 3. Get AI Analysis (now a direct async call)
-        analysis_text = await self.llm_analyzer.analyze_chart_image(chart_image_bytes, ticker_symbol)
+        analysis_text = await self.llm_analyzer.analyze_chart_image(
+            image_bytes=chart_image_bytes, 
+            ticker_symbol=ticker_symbol,
+            key_financial_data=key_data
+        )
         if not analysis_text:
             print(f"Orchestrator: Failed to get analysis from LLM for {ticker_symbol}. Aborting.")
             return

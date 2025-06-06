@@ -121,9 +121,33 @@ class ChartGenerator:
         
         return indicator_data
 
-    async def generate_chart_from_df(self, raw_df: pd.DataFrame, ticker_symbol: str, interval: str) -> Optional[bytes]:
+    def _extract_key_data(self, df_with_indicators: pd.DataFrame) -> dict:
+        """Extracts key financial data points from the final dataframe."""
+        latest_row = df_with_indicators.iloc[-1]
+        
+        key_data = {
+            "latest_close": latest_row.get('close'),
+            "period_high": df_with_indicators['high'].max(),
+            "period_low": df_with_indicators['low'].min(),
+            "bollinger_upper": latest_row.get('bbu'),
+            "bollinger_middle": latest_row.get('bbm'),
+            "bollinger_lower": latest_row.get('bbl'),
+            "stoch_rsi_k": latest_row.get('stochk_14_3_3'),
+            "stoch_rsi_d": latest_row.get('stochd_14_3_3'),
+        }
+        
+        # Round all values to 2-4 decimal places for cleaner output, handling None
+        for key, value in key_data.items():
+            if value is not None and isinstance(value, (int, float)):
+                key_data[key] = round(value, 4)
+
+        print(f"Extracted Key Data: {key_data}")
+        return key_data
+
+    async def generate_chart_from_df(self, raw_df: pd.DataFrame, ticker_symbol: str, interval: str) -> Tuple[Optional[bytes], Optional[dict]]:
         """
-        Generates a chart image from a given pandas DataFrame and returns the image bytes.
+        Generates a chart image and key data summary from a pandas DataFrame.
+        Returns a tuple of (image_bytes, key_data_dict).
         """
         # 1. Calculate indicators
         df_with_indicators = self._calculate_indicators(raw_df)
@@ -131,6 +155,9 @@ class ChartGenerator:
         # 2. Format all data for JavaScript
         ohlc_data, volume_data, stoch_k_data, stoch_d_data = self._format_data_for_js(df_with_indicators)
         indicator_data = self._get_indicator_data_for_js(df_with_indicators)
+        
+        # 2.5 Extract key data for LLM
+        key_data_dict = self._extract_key_data(df_with_indicators)
         
         # 3. Create the chart using Playwright
         print(f"Playwright: Launching browser for {ticker_symbol}...")
@@ -182,7 +209,7 @@ class ChartGenerator:
                 await browser.close()
                 print(f"Playwright: Browser closed for {ticker_symbol}.")
 
-                return image_bytes
+                return image_bytes, key_data_dict
                 
         except Exception as e:
             print(f"An error occurred during chart generation for {ticker_symbol}: {e}")
@@ -218,7 +245,7 @@ async def main():
         return
 
     # 4. Generate chart image from the raw DataFrame
-    image_bytes = await generator.generate_chart_from_df(
+    image_bytes, key_data = await generator.generate_chart_from_df(
         raw_df=raw_df, 
         ticker_symbol=ticker,
         interval=interval
