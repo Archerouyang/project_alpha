@@ -86,9 +86,6 @@ class ReportConverter:
                     background-color: #2d3748; color: #ffffff; padding: 25px 40px;
                     display: flex; align-items: center; gap: 20px;
                 }}
-                .logo {{
-                    width: 40px; height: 40px; background-color: #4a5568; border-radius: 8px;
-                }}
                 .title-block h1 {{ font-size: 1.8em; margin: 0; font-weight: 700; }}
                 .title-block h2 {{ font-size: 1em; margin: 0; color: #a0aec0; font-weight: 400; }}
                 .content-wrapper {{ padding: 30px 40px; }}
@@ -109,11 +106,9 @@ class ReportConverter:
                     display: flex; align-items: center; gap: 10px; margin-bottom: 15px;
                     color: #2d3748; font-size: 1.2em; font-weight: 600;
                 }}
-                .section-title .icon {{ width: 24px; height: 24px; background-color: #cbd5e0; border-radius: 50%; }}
                 .content-card {{
                     background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
                     padding: 20px; line-height: 1.7; color: #4a5568;
-                    border-left: 4px solid #4fd1c5;
                 }}
                 .disclaimer-card {{
                     background-color: #fffaf0; border-color: #feebc8; border-left-color: #f6ad55;
@@ -131,7 +126,6 @@ class ReportConverter:
         <body>
             <div class="container">
                 <div class="header">
-                    <div class="logo"></div>
                     <div class="title-block">
                         <h1>📊 技术分析报告</h1>
                         <h2>{ticker.upper()} | {interval.upper()}</h2>
@@ -142,12 +136,12 @@ class ReportConverter:
                     <div class="dashboard">{key_data_html}</div>
                     
                     <div class="section">
-                      <div class="section-title"><div class="icon"></div><span>📈 技术分析</span></div>
+                      <div class="section-title"><span>📈 技术分析</span></div>
                       <div class="content-card">{html_body}</div>
                     </div>
 
                     <div class="section">
-                      <div class="section-title"><div class="icon"></div><span>⚠️ 免责声明</span></div>
+                      <div class="section-title"><span>⚠️ 免责声明</span></div>
                       <div class="content-card disclaimer-card">
                         <p class="text">{disclaimer_text}</p>
                       </div>
