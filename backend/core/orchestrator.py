@@ -85,8 +85,8 @@ class AnalysisOrchestrator:
             print(f"Orchestrator: An unexpected error occurred while running the CLI script: {e}")
             return False
 
-    async def generate_report(self, ticker: str, interval: str, num_candles: int) -> Tuple[Optional[str], Optional[str]]:
-        print(f"--- Orchestrator: Starting report for {ticker} ---")
+    async def generate_report(self, ticker: str, interval: str, num_candles: int, exchange: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        print(f"--- Orchestrator: Starting report for {ticker} (Exchange: {exchange or 'N/A'}) ---")
         report_dir, chart_path, key_data_path, analysis_path, final_report_path = self._create_report_paths(ticker, interval)
         
         # --- Step 1: Generate Chart and Key Data via CLI ---
@@ -98,6 +98,8 @@ class AnalysisOrchestrator:
             "--ticker", ticker, "--interval", interval, "--num-candles", str(num_candles),
             "--output-image", chart_path, "--output-data", key_data_path
         ]
+        if exchange:
+            chart_command.extend(["--exchange", exchange])
 
         if not self._run_cli_command(chart_command):
             print(f"Orchestrator: Chart generation failed for {ticker}. Aborting.")
@@ -151,7 +153,7 @@ async def main_test():
     
     orchestrator = AnalysisOrchestrator()
     # Test with a common stock
-    final_report_path, error = await orchestrator.generate_report("AAPL", "1d", 90)
+    final_report_path, error = await orchestrator.generate_report("AAPL", "1d", 90, None)
     
     if error:
         print(f"An error occurred: {error}")

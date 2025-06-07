@@ -85,8 +85,8 @@
                 interval
             } = args;
 
-            // Set title
-            document.getElementById('chart-title-text').textContent = `${tickerSymbol} ${interval} - Chart with Bollinger Bands and StochRSI`;
+            // Set a cleaner, more general title
+            document.getElementById('chart-title-text').textContent = `${tickerSymbol} - ${interval.toUpperCase()} Technical Analysis`;
             
             const wrapper = document.getElementById('chart-container-wrapper');
             wrapper.style.width = chartWidth + 'px';

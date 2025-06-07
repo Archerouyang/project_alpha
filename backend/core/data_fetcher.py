@@ -77,73 +77,66 @@ def _standardize_df_columns(df: pd.DataFrame) -> pd.DataFrame:
                 raise ValueError(f"Missing required column '{col}' after standardization.")
     return df[required_cols]
 
-CRYPTO_EXCHANGES = ["coinbase", "binance", "kraken", "kucoin", "gateio", "fmp"]
+# A list of known crypto exchanges supported by FMP via OpenBB
+# This helps in distinguishing between a crypto ticker and a stock ticker.
+KNOWN_CRYPTO_EXCHANGES = ["coinbase", "binance", "kraken", "kucoin", "gateio", "bitfinex"]
 
 def get_ohlcv_data(
     ticker: str,
     interval: str,
-    num_candles: int = 150
+    num_candles: int = 150,
+    exchange: Optional[str] = None
 ) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     """
-    Fetches OHLCV data for a given ticker, ensuring a specific number of candles.
-    It over-fetches data based on a rough estimate and then trims to the exact number.
-    This is now a synchronous function.
+    Fetches OHLCV data for a given ticker, intelligently handling crypto vs. equity.
     """
-    print(f"Fetching data for '{ticker}': aiming for {num_candles} candles, interval '{interval}'...")
+    print(f"Fetching data for '{ticker}' on exchange '{exchange or 'default'}' aiming for {num_candles} candles, interval '{interval}'...")
 
-    # --- JIT Credential Setup ---
-    # Set credentials right before the API call to ensure they are available
-    # in any execution context (main app or subprocess).
     fmp_api_key = os.getenv("FMP_API_KEY")
     if not fmp_api_key:
-        # This is a critical error, as the API call will fail.
-        print("CRITICAL: FMP_API_KEY not found in environment. Aborting data fetch.")
-        raise ValueError("Missing FMP_API_KEY. Ensure it's in the .env file and loaded correctly.")
+        print("CRITICAL: FMP_API_KEY not found in environment.")
+        raise ValueError("Missing FMP_API_KEY.")
     obb.user.credentials.fmp_api_key = fmp_api_key
-    
-    # Estimate days to fetch. Add a 50% buffer to account for non-trading days/hours.
-    candles_per_day_map = {
-        '1d': 1,
-        '4h': 2, # ~ 6.5h trading day / 4h = 1.625 -> 2
-        '1h': 7  # ~ 6.5h trading day / 1h = 6.5 -> 7
-    }
-    candles_per_day = candles_per_day_map.get(interval, 1) # Default to 1 for unknown intervals
-    
-    # Calculate days to fetch with a 1.5x buffer, ensuring at least a few days are fetched.
-    days_to_fetch = math.ceil((num_candles / candles_per_day) * 1.5) + 2
 
+    # Determine if the asset is crypto or equity
+    # A simple heuristic: if an exchange is provided and it's a known crypto exchange,
+    # or if the ticker contains a common crypto separator like '-', assume it's crypto.
+    is_crypto = (exchange and exchange.lower() in KNOWN_CRYPTO_EXCHANGES) or ('-' in ticker)
+    
+    days_to_fetch = _calculate_days_to_fetch(num_candles, interval, is_crypto)
     start_date = (datetime.now() - timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
     
     try:
-        # Use OpenBB SDK to fetch data - this is a synchronous call, so no 'await'.
-        data = obb.equity.price.historical(
-            symbol=ticker,
-            start_date=start_date,
-            interval=interval,
-            provider="fmp"
-        )
+        if is_crypto:
+            print(f"-> Detected as CRYPTO. Using obb.crypto.price.historical...")
+            # For crypto, the exchange is a direct parameter.
+            data = obb.crypto.price.historical(
+                symbol=ticker,
+                start_date=start_date,
+                interval=interval,
+                exchange=exchange, # Pass the exchange here
+                provider="fmp"
+            )
+        else:
+            print(f"-> Detected as EQUITY. Using obb.equity.price.historical...")
+            # For equity, FMP is the provider and doesn't need an 'exchange' parameter.
+            data = obb.equity.price.historical(
+                symbol=ticker,
+                start_date=start_date,
+                interval=interval,
+                provider="fmp"
+            )
         
-        # Convert the OpenBB object to a pandas DataFrame immediately.
         df = data.to_df()
-
-        # Now, all checks should be performed on the DataFrame.
         if df.empty:
             print(f"No data fetched for ticker {ticker} (DataFrame is empty).")
             return None, None
 
-        # Sort by date to ensure chronological order before trimming
         df.sort_index(ascending=True, inplace=True)
-
-        # Trim the DataFrame to the desired number of candles
-        if len(df) > num_candles:
-            df_trimmed = df.tail(num_candles).copy()
-        else:
-            df_trimmed = df.copy()
+        
+        df_trimmed = df.tail(num_candles).copy() if len(df) > num_candles else df.copy()
 
         print(f"Successfully fetched {len(df_trimmed)} data points for '{ticker}'.")
-        
-        # The first element of the tuple is the raw, untrimmed data (for potential future use)
-        # The second is the processed, trimmed data which we will use.
         return df, df_trimmed
 
     except Exception as e:
@@ -151,3 +144,18 @@ def get_ohlcv_data(
         import traceback
         traceback.print_exc()
         return None, None
+
+def _calculate_days_to_fetch(num_candles: int, interval: str, is_crypto: bool) -> int:
+    """Helper function to estimate the number of calendar days to fetch."""
+    if is_crypto:
+        # Crypto markets run 24/7
+        candles_per_day_map = {'1d': 1, '4h': 6, '1h': 24}
+        buffer_multiplier = 1.2 # Smaller buffer needed for 24/7 markets
+    else:
+        # Equity markets have trading hours
+        candles_per_day_map = {'1d': 1, '4h': 2, '1h': 7}
+        buffer_multiplier = 1.7 # Larger buffer for weekends/holidays
+        
+    candles_per_day = candles_per_day_map.get(interval, 1)
+    days_to_fetch = math.ceil((num_candles / candles_per_day) * buffer_multiplier) + 2
+    return int(days_to_fetch)

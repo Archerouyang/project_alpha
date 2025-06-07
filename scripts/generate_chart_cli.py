@@ -20,9 +20,10 @@ def main():
     financial data to specified output files. This process is now fully synchronous.
     """
     parser = argparse.ArgumentParser(description="Generate a stock chart image and associated data.")
-    parser.add_argument("--ticker", type=str, required=True, help="Stock ticker symbol (e.g., AAPL).")
+    parser.add_argument("--ticker", type=str, required=True, help="Stock ticker symbol (e.g., AAPL, BTC-USD).")
     parser.add_argument("--interval", type=str, default="1d", help="Data interval (e.g., 1h, 4h, 1d).")
     parser.add_argument("--num-candles", type=int, default=150, help="Number of candles to display on the chart.")
+    parser.add_argument("--exchange", type=str, default=None, help="The crypto exchange to use (e.g., KRAKEN, BINANCE).")
     parser.add_argument("--output-image", type=str, required=True, help="Path to save the output chart image.")
     parser.add_argument("--output-data", type=str, required=True, help="Path to save the output key data JSON file.")
     
@@ -32,7 +33,7 @@ def main():
 
     # 1. Fetch data directly, as the function is now synchronous.
     try:
-        _, raw_df = get_ohlcv_data(args.ticker, args.interval, args.num_candles)
+        _, raw_df = get_ohlcv_data(args.ticker, args.interval, args.num_candles, args.exchange)
         if raw_df is None or raw_df.empty:
             raise ValueError(f"No data fetched for ticker {args.ticker}.")
         print(f"CLI: Successfully fetched {len(raw_df)} data points.")
