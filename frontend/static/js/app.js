@@ -18,10 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
         <code>BTC-USD KRAKEN 1h</code>`;
     appendMessage(welcomeText, 'ai');
 
-    sendButton.addEventListener('click', analyzeStock);
+    sendButton.addEventListener('click', handleSend);
     userInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
-            analyzeStock();
+            event.preventDefault(); // Prevents new line on enter
+            handleSend();
         }
     });
 
@@ -43,76 +44,73 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Generates a friendly, persona-driven error message for invalid user input.
-     * @param {string} userInput The original (incorrect) user input.
-     * @returns {string} A friendly error message.
+     * Handles the main logic of sending user input to the backend.
+     * It first validates the instruction, then triggers the analysis if valid.
      */
-    function getFriendlyErrorMessage(userInput) {
-        const scenarios = {
-            empty: [
-                "主人，你想分析哪只股票呀？请告诉我它的代码哦！✨ 比如：AAPL",
-                "呜哇...好像没有看到股票代码呢...请告诉我你想分析谁呀？(^o^)/"
-            ],
-            generic: [
-                "唔...这个指令我有点看不懂耶～(>ω<) 能不能检查一下格式是不是像 'AAPL 1h' 这样的呢？",
-                "啊哦，好像哪里不对啦～ 指令的格式是 '[代码] [交易所] [周期]' 哦！",
-                "这个是什么咒语吗？(・_・;) 我需要 'TSLA 4h' 或 'BTC-USD KRAKEN' 这样的指令才能开始分析呢！"
-            ]
-        };
-    
-        let messages = scenarios.generic;
-        if (!userInput || userInput.trim() === "") {
-            messages = scenarios.empty;
-        }
-        
-        const randomIndex = Math.floor(Math.random() * messages.length);
-        return messages[randomIndex];
-    }
-
-    /**
-     * Handles the main logic of parsing input, validating, and calling the API.
-     */
-    async function analyzeStock() {
+    async function handleSend() {
         const inputText = userInput.value.trim();
-        
-        // Add user message to chat and clear input
+        if (!inputText) return;
+
         appendMessage(inputText, 'user');
         userInput.value = '';
         
-        showLoadingIndicator();
+        showLoadingIndicator("正在理解您的指令...");
 
-        const parts = inputText.split(/\s+/).filter(p => p);
-        const tickerRegex = /^[A-Z0-9\.-]+$/i;
+        try {
+            // Step 1: Validate and correct the instruction via the LLM
+            const validationResponse = await fetch('/api/validate_instruction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_input: inputText }),
+            });
 
-        // --- Input Validation ---
-        if (parts.length === 0 || !tickerRegex.test(parts[0])) {
-            hideLoadingIndicator();
-            const friendlyError = getFriendlyErrorMessage(inputText);
-            appendMessage(friendlyError, 'error');
-            return; // Stop execution if input is invalid
-        }
+            const validationData = await validationResponse.json();
 
-        const stockSymbol = parts[0].toUpperCase();
-        
-        let exchange = null;
-        let timeInterval = '1d';
-        let num_candles = 150;
-
-        if (parts.length === 2) {
-            if (isInterval(parts[1])) {
-                timeInterval = parts[1];
-            } else {
-                exchange = parts[1].toUpperCase();
+            if (!validationResponse.ok) {
+                hideLoadingIndicator();
+                appendMessage(validationData.detail || '哦豁，验证指令的时候服务器出错了...', 'error');
+                return;
             }
-        } else if (parts.length >= 3) {
-            exchange = parts[1].toUpperCase();
-            timeInterval = parts[2];
-        }
+            
+            // Show the AI's "thought" or clarification
+            hideLoadingIndicator();
+            if (validationData.explanation) {
+                appendMessage(validationData.explanation, 'ai');
+            }
 
+            // Step 2: Based on validation, either proceed to analysis or stop
+            if (validationData.status === 'valid') {
+                showLoadingIndicator("收到指令！正在生成分析报告...");
+                await callAnalysisAPI(validationData.command);
+            } else {
+                // For "clarification_needed" or "irrelevant", we just showed the message.
+                // The flow stops here, waiting for new user input.
+                hideLoadingIndicator();
+            }
+
+        } catch (error) {
+            hideLoadingIndicator();
+            appendMessage(`呜哇，连接好像断开啦... (${error.message})`, 'error');
+        }
+    }
+
+    /**
+     * Parses the corrected command and calls the analysis API.
+     * @param {string} command The validated and corrected command string.
+     */
+    async function callAnalysisAPI(command) {
+        // Parse the command string provided by the validation LLM
+        const parts = command.split(/\s+/).filter(p => p);
+        const stockSymbol = parts[0];
+        const exchange = parts.length > 1 && !isInterval(parts[1]) ? parts[1] : null;
+        const timeInterval = parts.find(isInterval) || '1d';
+        const numCandlesStr = parts.find(p => /^\d+$/.test(p) && p !== stockSymbol);
+        const numCandles = numCandlesStr ? parseInt(numCandlesStr, 10) : 150;
+        
         const requestData = {
             ticker: stockSymbol,
             interval: timeInterval,
-            num_candles: num_candles,
+            num_candles: numCandles,
             exchange: exchange,
         };
 
@@ -128,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) {
                 const errorData = await response.json();
                 const detail = errorData.detail || `HTTP error ${response.status}`;
-                appendMessage(`唔...服务器好像出了一点小问题...(${detail})，请稍后再试一下吧！`, 'error');
+                appendMessage(`唔...服务器在生成报告时好像出了一点小问题...(${detail})，请稍后再试一下吧！`, 'error');
                 return;
             }
 
@@ -137,23 +135,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             hideLoadingIndicator();
-            appendMessage(`呜哇，连接好像断开啦... (${error.message})`, 'error');
+            appendMessage(`呜哇，连接分析服务的时候断开啦... (${error.message})`, 'error');
         }
     }
     
-    function showLoadingIndicator() {
-        const existingIndicator = document.querySelector('.loading-indicator');
-        if (existingIndicator) return;
+    function showLoadingIndicator(message = "分析中...") {
+        const existingIndicator = document.querySelector('.loading-message');
+        if (existingIndicator) {
+            existingIndicator.querySelector('p').innerHTML = message;
+            return;
+        }
 
         const loadingDiv = document.createElement('div');
         loadingDiv.className = 'message loading-message';
-        loadingDiv.innerHTML = '<p>分析中...</p>';
+        loadingDiv.innerHTML = `<p>${message}</p>`;
         chatContainer.appendChild(loadingDiv);
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
     function hideLoadingIndicator() {
-        const loadingIndicator = document.querySelector('.loading-indicator');
+        const loadingIndicator = document.querySelector('.loading-message');
         if (loadingIndicator) {
             loadingIndicator.remove();
         }
@@ -188,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
      * @returns {boolean}
      */
     function isInterval(s) {
-        // A simple regex to check for formats like 1h, 4h, 1d, 1w
-        return /^\d+[hdw]$/i.test(s);
+        // A simple regex to check for formats like 1h, 4h, 1d, 1w, 1mo
+        return /^\d+[hdwmHWMoO]+$/.test(s);
     }
 }); 
