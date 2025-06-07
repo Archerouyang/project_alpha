@@ -1,102 +1,94 @@
-# AI-Powered Stock Analysis Service (WeChat Mini Program Edition)
+# AI-Powered Financial Analysis Service
 
-This project provides a sophisticated financial analysis service, now re-architected for WeChat. It allows users to get AI-powered technical analysis reports for stocks and cryptocurrencies directly within a WeChat Mini Program.
+This project provides a sophisticated financial analysis service, accessible via a clean, web-based chat interface. It allows users to get AI-powered technical analysis reports for stocks and cryptocurrencies, which are presented in a polished, professional, and easy-to-read image format.
 
-The system's backend fetches market data, generates detailed candlestick charts, uses a Large Language Model (LLM) for in-depth analysis, and serves the final report to the WeChat client.
-
-## Architecture: Cloud Backend + Mini Program Frontend
-
-To support WeChat, the project has transitioned from a monolithic web server to a decoupled, cloud-native architecture.
-
--   **Backend (Cloud API Service)**
-    -   A **FastAPI (Python)** application that exposes endpoints for instruction validation and report generation.
-    -   This service is designed to be deployed to a **cloud server** (e.g., AWS, Azure, Heroku, or similar) and must be accessible via a public HTTPS URL.
-    -   It continues to use OpenBB for data, Playwright for charting, and DeepSeek for AI analysis.
-
--   **Frontend (WeChat Mini Program)**
-    -   A new frontend built specifically for the WeChat environment, located in the `/miniprogram` directory.
-    -   It uses WeChat's native components (`WXML`, `WXSS`) for the user interface.
-    -   Client-side logic is written in JavaScript and communicates with the backend via `wx.request()` API calls.
-
-## Project Roadmap for Mini Program Migration
-
-This README outlines the development plan to complete the migration.
-
--   [ ] **1. Deploy Backend to Cloud**: Package and deploy the existing FastAPI application to a public cloud server, obtaining a stable HTTPS API endpoint.
--   [ ] **2. Initialize Mini Program Project**: Create the basic file structure (`/miniprogram` directory) for a new WeChat Mini Program.
--   [ ] **3. Rebuild UI in WXML/WXSS**: Recreate the chat-based user interface using WeChat's native UI language.
--   [ ] **4. Implement Client Logic**:
-    -   Rewrite the JavaScript logic to handle user input.
-    -   Replace `fetch` calls with `wx.request` to communicate with the deployed backend.
-    -   Manage state and display results (loading indicators, AI messages, report images).
--   [ ] **5. Configuration & Testing**: Configure the backend API URL in the mini program and conduct end-to-end testing in the WeChat Developer Tools.
+The system's backend fetches market data, generates detailed candlestick charts, uses a Large Language Model (LLM) for in-depth analysis, and composites the chart and text into a final, beautifully designed report image.
 
 ---
 
-## Setup and Development
+## Current Features
 
-This section describes how to set up the two parts of the project for development.
+-   **Polished Report Generation**: Creates visually stunning report images based on a professional, modern template. Key design features include:
+    -   A clean, card-based layout with a distinct header and footer.
+    -   A "Key Data Dashboard" for at-a-glance metrics (e.g., close price, period high/low, indicator values).
+    -   A sophisticated blue-gray and teal color scheme.
+    -   Customizable author attribution with an avatar in the report footer.
 
-### 1. Backend API Service
+-   **Intuitive Web UI**: A simple, chat-like interface to request and display analysis reports, running on FastAPI and Uvicorn.
 
-The backend setup remains largely the same.
+-   **Broad Market Support**: Intelligently fetches data for both stock tickers (e.g., `AAPL`) and cryptocurrency pairs (e.g., `BTC-USD`).
 
-1.  **Clone, Create Virtual Env, Install Dependencies**: Follow the original setup steps using `uv`.
-    ```bash
-    # Install dependencies
-    uv pip install -r requirements.txt --prerelease=allow
-    ```
-2.  **Set Up API Keys**: Create a `.env` file in the project root with your `DEEPSEEK_API_KEY` and `FMP_API_KEY`.
-3.  **Run Locally for Development**:
-    ```bash
-    uvicorn main:app --reload
-    ```
-    During development, the backend will run on `http://127.0.0.1:8000`. You will need to configure your WeChat Developer Tools to allow requests to this local address.
+-   **Exchange-Specific Data**: Allows specifying a cryptocurrency exchange (e.g., `KRAKEN`, `BINANCE`) for precise data sourcing.
 
-### 2. Frontend WeChat Mini Program
+-   **Flexible Time Intervals**: Supports various timeframes like `1h`, `4h`, `1d` (default), `1w`.
 
-1.  **Install WeChat Developer Tools**: Download and install the official [WeChat Developer Tools](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html).
-2.  **Import the Project**:
-    -   Open the developer tools and choose to import a project.
-    -   Point the project directory to the `project_alpha` folder (or wherever you cloned the repo).
-    -   Set the "AppID" for your mini program. If you don't have one, you can use a test AppID provided by the tools.
-    -   The tools should automatically detect the `miniprogram` folder (once we create it).
-3.  **Configure API Endpoint**:
-    -   Inside the mini program's code, you will need to set the backend URL to point to your deployed service (for production) or your local machine (for development).
+-   **AI-Powered Analysis**: Leverages the DeepSeek API to generate a narrative analysis based on the chart and key data points.
+
+-   **Robust Architecture**: A decoupled architecture where resource-intensive Playwright operations (charting, report rendering) are executed in isolated CLI scripts, avoiding common `asyncio` event loop conflicts with web servers like Uvicorn.
+
+---
+
+## Project Structure
+
+A brief overview of the key directories:
+
+-   `backend/`: Contains the core application logic, including the FastAPI server, data fetching, analysis orchestration, and report generation.
+-   `frontend/`: The static files (HTML, CSS, JS) for the web-based user interface.
+-   `scripts/`: Holds standalone command-line scripts used by the orchestrator for heavy-lifting tasks like charting.
+-   `assets/`: Stores static image assets, such as author avatars, used in report generation.
+-   `generated_reports/`: The default output directory for the final report images.
 
 ---
 
 ## Technology Stack
 
 -   **Backend**: Python 3.11 with FastAPI
--   **Frontend**: WeChat Mini Program (WXML, WXSS, JavaScript)
+-   **Frontend**: HTML, CSS, JavaScript
 -   **Data Source**: OpenBB SDK
 -   **Chart Rendering**: Playwright & TradingView Lightweight Charts
 -   **AI Analysis**: DeepSeek API
--   **Deployment**: Cloud Server (Heroku, Vercel, AWS, etc.)
-
-## Features
-
-- **Web UI**: A clean, chat-like interface to request and display analysis reports.
-- **Equity and Crypto Support**: Intelligently fetches data for both stock tickers (e.g., `AAPL`) and cryptocurrency pairs (e.g., `BTC-USD`).
-- **Exchange-Specific Data**: Allows specifying a cryptocurrency exchange (e.g., `KRAKEN`, `BINANCE`) for precise data sourcing.
-- **Flexible Time Intervals**: Supports various timeframes like `1h`, `4h`, `1d` (default), `1w`.
-- **Candle-Count Based Charts**: Generates charts with a fixed number of candles (e.g., 150) for consistent analysis across different time intervals, rather than a fixed date range.
-- **AI-Powered Analysis**: Leverages the DeepSeek API to generate a narrative analysis based on the chart and key data points.
-- **Robust Architecture**: A decoupled architecture where resource-intensive Playwright operations (charting, report rendering) are executed in isolated CLI scripts, avoiding common `asyncio` event loop conflicts with web servers like Uvicorn.
+-   **Dependency Management**: uv
 
 ---
 
-## How to Run the Service
+## Setup and Run
 
-The application is run as a web server using Uvicorn.
+1.  **Clone the Repository**
+    ```bash
+    git clone <your-repository-url>
+    cd project_alpha
+    ```
 
-1.  **Ensure your virtual environment is activated.**
-2.  **Start the server from the project root directory**:
+2.  **Create Virtual Environment and Install Dependencies**: This project uses `uv` for package management.
+    ```bash
+    # Create a virtual environment
+    uv venv
+    
+    # Activate the environment
+    # On Windows
+    .venv\Scripts\activate
+    # On macOS/Linux
+    source .venv/bin/activate
+
+    # Install dependencies
+    uv pip install -r requirements.txt --prerelease=allow
+    ```
+
+3.  **Set Up API Keys**: Create a `.env` file in the project root. You can copy the example below.
+    ```env
+    # .env
+    DEEPSEEK_API_KEY="your_deepseek_api_key"
+    FMP_API_KEY="your_financial_modeling_prep_api_key"
+    ```
+
+4.  **Run the Web Server**:
     ```bash
     uvicorn main:app --reload
     ```
-3.  **Open your browser** and navigate to `http://127.0.0.1:8000`.
+
+5.  **Access the Service**: Open your browser and navigate to `http://127.0.0.1:8000`.
+
+---
 
 ## How to Use the Interface
 
@@ -111,4 +103,22 @@ Enter your request in the input box using the following format:
 **Examples:**
 - `TSLA 4h`
 - `BTC-USD KRAKEN 1h`
-- `NVDA` 
+- `NVDA`
+
+---
+
+## Future Roadmap: WeChat Mini Program
+
+The next major development phase for this project is to create a front-end client as a WeChat Mini Program, allowing users to access the service directly on their mobile devices.
+
+### Planned Architecture
+
+-   **Backend (Cloud API Service)**: The existing FastAPI application will be deployed to a public cloud server (e.g., AWS, Azure, Heroku) to provide a stable, public HTTPS API endpoint.
+-   **Frontend (WeChat Mini Program)**: A new frontend will be built using WeChat's native technologies (WXML, WXSS, and JavaScript) to create a user experience optimized for mobile. It will communicate with the deployed backend via `wx.request()` API calls.
+
+### Development Steps
+-   [ ] **Deploy Backend to Cloud**: Package and deploy the FastAPI app.
+-   [ ] **Initialize Mini Program Project**: Create the `/miniprogram` directory and basic file structure.
+-   [ ] **Rebuild UI in WXML/WXSS**: Recreate the chat-based UI using WeChat's native components.
+-   [ ] **Implement Client Logic**: Rewrite frontend logic in JavaScript for WeChat's environment.
+-   [ ] **End-to-End Testing**: Configure the API endpoint and test thoroughly within WeChat Developer Tools. 
