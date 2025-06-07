@@ -1,12 +1,12 @@
 # backend/core/chart_generator.py
-import asyncio
 import os
 import pandas as pd
 import pandas_ta as ta
+import sys
 from datetime import datetime, date
 from typing import Optional, Tuple, List, Dict, Any
 
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright # Use sync API
 
 class ChartGenerator:
     def __init__(self, output_dir: str = "generated_reports"):
@@ -144,135 +144,52 @@ class ChartGenerator:
         print(f"Extracted Key Data: {key_data}")
         return key_data
 
-    async def generate_chart_from_df(self, raw_df: pd.DataFrame, ticker_symbol: str, interval: str) -> Tuple[Optional[bytes], Optional[dict]]:
+    def generate_chart_from_df(self, raw_df: pd.DataFrame, ticker_symbol: str, interval: str) -> Tuple[Optional[bytes], Optional[dict]]:
         """
-        Generates a chart image and key data summary from a pandas DataFrame.
-        Returns a tuple of (image_bytes, key_data_dict).
+        Generates a chart image from a DataFrame using a self-contained, synchronous Playwright instance.
         """
-        # 1. Calculate indicators
         df_with_indicators = self._calculate_indicators(raw_df)
-
-        # 2. Format all data for JavaScript
         ohlc_data, volume_data, stoch_k_data, stoch_d_data = self._format_data_for_js(df_with_indicators)
         indicator_data = self._get_indicator_data_for_js(df_with_indicators)
-        
-        # 2.5 Extract key data for LLM
         key_data_dict = self._extract_key_data(df_with_indicators)
         
-        # 3. Create the chart using Playwright
-        print(f"Playwright: Launching browser for {ticker_symbol}...")
+        print(f"Playwright: Launching self-contained browser for {ticker_symbol}...")
         try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch()
-                page = await browser.new_page()
-
-                # Add a listener for console messages
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                page = browser.new_page()
                 page.on("console", lambda msg: print(f"Browser Console ({msg.type}): {msg.text}"))
-
+                
                 template_url = f"file://{self.template_path}"
-                print(f"Playwright: Loaded HTML template: {template_url}")
-                await page.goto(template_url)
+                page.goto(template_url)
+                page.wait_for_function("typeof window.renderChart === 'function'")
+
+                page.evaluate(
+                    "(args) => window.renderChart(args)",
+                    {
+                        "ohlcData": ohlc_data, "volumeData": volume_data, "stochKData": stoch_k_data,
+                        "stochDData": stoch_d_data, "bbuData": indicator_data.get('bbu', []),
+                        "bbmData": indicator_data.get('bbm', []), "bblData": indicator_data.get('bbl', []),
+                        "tickerSymbol": ticker_symbol.upper(), "interval": interval,
+                        "chartWidth": 1280, "chartHeight": 720
+                    }
+                )
                 
-                await page.wait_for_function("typeof window.renderChart === 'function'")
-
-                # Call the JavaScript function to render the chart
-                # Ensure the data passed matches the structure expected by the JS function
-                await page.evaluate("""
-                    (args) => window.renderChart(args)
-                """, {
-                    "ohlcData": ohlc_data,
-                    "volumeData": volume_data,
-                    "stochKData": stoch_k_data,
-                    "stochDData": stoch_d_data,
-                    "bbuData": indicator_data.get('bbu', []),
-                    "bbmData": indicator_data.get('bbm', []),
-                    "bblData": indicator_data.get('bbl', []),
-                    "tickerSymbol": ticker_symbol.upper(),
-                    "interval": interval,
-                    "chartWidth": 1280,
-                    "chartHeight": 720
-                })
-                print(f"Playwright: Chart rendering initiated for {ticker_symbol} via JS call.")
-
-                # Give the chart a moment to render before taking a screenshot
-                await page.wait_for_timeout(2000)
-                print(f"Playwright: Waited for rendering for {ticker_symbol}.")
-
-                # Take a screenshot of the chart container element
-                chart_element = await page.query_selector('#chart-container-wrapper')
+                page.wait_for_timeout(2000)
+                chart_element = page.query_selector('#chart-container-wrapper')
                 if not chart_element:
-                    raise RuntimeError("Could not find '#chart-container-wrapper' element in the HTML template.")
+                    raise RuntimeError("Could not find '#chart-container-wrapper' element in HTML.")
                 
-                image_bytes = await chart_element.screenshot()
-                print(f"Playwright: Screenshot captured as bytes for {ticker_symbol}.")
+                image_bytes = chart_element.screenshot()
+                browser.close()
                 
-                await browser.close()
-                print(f"Playwright: Browser closed for {ticker_symbol}.")
-
+                print(f"Playwright: Screenshot captured and browser closed for {ticker_symbol}.")
                 return image_bytes, key_data_dict
                 
         except Exception as e:
-            print(f"An error occurred during chart generation for {ticker_symbol}: {e}")
-            # Reraise to see full traceback in orchestrator
+            print(f"An error occurred during chart generation for {ticker_symbol}: {e}", file=sys.stderr)
             raise
 
-# Example Usage (Updated):
-async def main():
-    """
-    An example of how to use the ChartGenerator.
-    This will fetch data and then generate a chart image file.
-    """
-    print("--- Testing ChartGenerator ---")
-    
-    # 1. Import the data fetcher
-    # Placed here to avoid circular dependency issues if chart_generator is imported elsewhere
-    from backend.core.data_fetcher import get_ohlcv_data
-
-    # 2. Setup generator and test case
-    generator = ChartGenerator(output_dir="generated_reports")
-    ticker = "TSLA"
-    days = 30
-    interval = "1h"
-
-    print(f"\n--- Generating chart for {ticker} ({interval} for {days} days) ---")
-
-    # 3. Fetch data
-    # We get back both the formatted data for JS and the raw df for indicator calculation
-    js_data, raw_df = await get_ohlcv_data(ticker, days, interval)
-
-    if raw_df is None or raw_df.empty:
-        print(f"Could not fetch data for {ticker}. Aborting chart generation.")
-        return
-
-    # 4. Generate chart image from the raw DataFrame
-    image_bytes, key_data = await generator.generate_chart_from_df(
-        raw_df=raw_df, 
-        ticker_symbol=ticker,
-        interval=interval
-    )
-
-    # 5. Save the image to a file
-    if image_bytes:
-        if not os.path.exists(generator.output_dir):
-            os.makedirs(generator.output_dir)
-        
-        # Sanitize ticker for filename
-        safe_ticker = ticker.replace("/", "_").replace(":", "_")
-        filename = f"{safe_ticker}_{interval}_{days}d_chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-        filepath = os.path.join(generator.output_dir, filename)
-        
-        with open(filepath, "wb") as f:
-            f.write(image_bytes)
-        print(f"Chart for {ticker} saved successfully to: {filepath}")
-    else:
-        print(f"FAILED to generate chart image bytes for {ticker}.")
-
-
-if __name__ == "__main__":
-    # Ensure the event loop is managed correctly
-    try:
-        asyncio.run(main())
-    except Exception as e:
-        print(f"An error occurred in the main execution: {e}")
-        import traceback
-        traceback.print_exc()
+if __name__ == '__main__':
+    # This remains for potential direct testing in the future but is not used by the app.
+    print("This script is intended to be used as a module.")

@@ -2,12 +2,13 @@
 import pandas as pd
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Tuple, List, Optional, Dict, Any
 from openbb import obb
 from dotenv import load_dotenv
+import math
 
-# Load environment variables from .env file
+# Load environment variables from .env file at the module level
 load_dotenv()
 
 # This file is now a collection of functions, not a class.
@@ -78,87 +79,75 @@ def _standardize_df_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 CRYPTO_EXCHANGES = ["coinbase", "binance", "kraken", "kucoin", "gateio", "fmp"]
 
-async def get_ohlcv_data(
-    ticker_symbol: str,
-    days_history: int = 30,
-    interval: str = "1d",
-    extended_hours: bool = False
-) -> Tuple[Optional[List[Dict[str, Any]]], Optional[pd.DataFrame]]:
+def get_ohlcv_data(
+    ticker: str,
+    interval: str,
+    num_candles: int = 150
+) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     """
-    Fetches historical OHLCV data using the OpenBB SDK.
-    Returns both a data structure formatted for JS charting and the raw pandas DataFrame.
-
-    Args:
-        ticker_symbol (str): The stock symbol (e.g., "TSLA").
-        days_history (int): Number of past days to fetch data for.
-        interval (str): The data interval (e.g., "1h", "4h", "1d").
-        extended_hours (bool): Whether to include pre/post market data (for equities).
-
-    Returns:
-        A tuple containing:
-        - list: A list of dicts formatted for the frontend chart (OHLC & Volume).
-        - pd.DataFrame: The raw, unprocessed DataFrame from the provider.
-        Returns (None, None) if an error occurs.
+    Fetches OHLCV data for a given ticker, ensuring a specific number of candles.
+    It over-fetches data based on a rough estimate and then trims to the exact number.
+    This is now a synchronous function.
     """
-    print(f"Fetching data for '{ticker_symbol}': {days_history} days, interval '{interval}'...")
-    start_date = (datetime.now() - timedelta(days=days_history)).strftime('%Y-%m-%d')
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    openbb_interval = map_interval_to_openbb(interval)
-    
-    # Manually get the API key
-    fmp_api_key = _get_fmp_api_key()
+    print(f"Fetching data for '{ticker}': aiming for {num_candles} candles, interval '{interval}'...")
+
+    # --- JIT Credential Setup ---
+    # Set credentials right before the API call to ensure they are available
+    # in any execution context (main app or subprocess).
+    fmp_api_key = os.getenv("FMP_API_KEY")
     if not fmp_api_key:
-        print("FMP_API_KEY not found in .env file. Aborting data fetch.")
-        return None, None
+        # This is a critical error, as the API call will fail.
+        print("CRITICAL: FMP_API_KEY not found in environment. Aborting data fetch.")
+        raise ValueError("Missing FMP_API_KEY. Ensure it's in the .env file and loaded correctly.")
+    obb.user.credentials.fmp_api_key = fmp_api_key
+    
+    # Estimate days to fetch. Add a 50% buffer to account for non-trading days/hours.
+    candles_per_day_map = {
+        '1d': 1,
+        '4h': 2, # ~ 6.5h trading day / 4h = 1.625 -> 2
+        '1h': 7  # ~ 6.5h trading day / 1h = 6.5 -> 7
+    }
+    candles_per_day = candles_per_day_map.get(interval, 1) # Default to 1 for unknown intervals
+    
+    # Calculate days to fetch with a 1.5x buffer, ensuring at least a few days are fetched.
+    days_to_fetch = math.ceil((num_candles / candles_per_day) * 1.5) + 2
 
+    start_date = (datetime.now() - timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
+    
     try:
-        # Manually log in to the provider with the key
-        obb.user.credentials.fmp_api_key = fmp_api_key
-        
-        # Using 'fmp' as the default provider for equity data.
-        data_obb = await asyncio.to_thread(
-            obb.equity.price.historical,
-            symbol=ticker_symbol,
+        # Use OpenBB SDK to fetch data - this is a synchronous call, so no 'await'.
+        data = obb.equity.price.historical(
+            symbol=ticker,
             start_date=start_date,
-            end_date=end_date,
-            interval=openbb_interval,
-            provider="fmp",
-            extended_hours=extended_hours
+            interval=interval,
+            provider="fmp"
         )
+        
+        # Convert the OpenBB object to a pandas DataFrame immediately.
+        df = data.to_df()
 
-        if not hasattr(data_obb, 'to_dataframe') or data_obb.to_dataframe().empty:
-            print(f"OpenBB returned no data for '{ticker_symbol}'.")
+        # Now, all checks should be performed on the DataFrame.
+        if df.empty:
+            print(f"No data fetched for ticker {ticker} (DataFrame is empty).")
             return None, None
 
-        raw_df = data_obb.to_dataframe()
-        # The raw_df is returned for indicator calculations
-        print(f"Successfully fetched {len(raw_df)} data points for '{ticker_symbol}'.")
-        
-        # This part formats the data specifically for the chart rendering
-        df_for_js = raw_df.copy()
-        df_for_js.columns = [col.lower() for col in df_for_js.columns]
-        
-        ohlc_data = []
-        volume_data = []
-        for timestamp, row in df_for_js.iterrows():
-            time_unix = int(timestamp.timestamp())
-            ohlc_data.append({
-                "time": time_unix,
-                "open": row['open'],
-                "high": row['high'],
-                "low": row['low'],
-                "close": row['close']
-            })
-            volume_color = 'rgba(0, 150, 136, 0.6)' if row['close'] >= row['open'] else 'rgba(255, 82, 82, 0.6)'
-            volume_data.append({"time": time_unix, "value": row['volume'], "color": volume_color})
+        # Sort by date to ensure chronological order before trimming
+        df.sort_index(ascending=True, inplace=True)
 
-        js_data = {
-            "ohlcData": ohlc_data,
-            "volumeData": volume_data
-        }
+        # Trim the DataFrame to the desired number of candles
+        if len(df) > num_candles:
+            df_trimmed = df.tail(num_candles).copy()
+        else:
+            df_trimmed = df.copy()
 
-        return js_data, raw_df
+        print(f"Successfully fetched {len(df_trimmed)} data points for '{ticker}'.")
+        
+        # The first element of the tuple is the raw, untrimmed data (for potential future use)
+        # The second is the processed, trimmed data which we will use.
+        return df, df_trimmed
 
     except Exception as e:
-        print(f"An error occurred during OpenBB data fetch for '{ticker_symbol}': {e}")
+        print(f"An error occurred while fetching data for {ticker}: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None

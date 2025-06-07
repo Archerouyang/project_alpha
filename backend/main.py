@@ -1,82 +1,128 @@
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import StreamingResponse
-from contextlib import asynccontextmanager
-import io # For BytesIO
+import base64
+import os
+import sys
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
+from pydantic import BaseModel, Field
+from typing import Optional
+from dotenv import load_dotenv
 
-from backend.core.chart_generator import LightweightChartGenerator
-# Assuming schemas.py might be used later for request/response models
-# from backend.models import schemas 
+# Load environment variables from .env file at the very top
+# This ensures all modules and subprocesses can access them.
+load_dotenv()
 
-# Initialize the chart generator. 
-# It can be initialized once and reused if its state is not request-specific,
-# or initialized per request if necessary (e.g., if output_dir needs to change).
-# For now, let's initialize it globally as its config is static.
-chart_gen = LightweightChartGenerator() 
+# Add project root to path to allow imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-# Placeholder for lifespan events (e.g., startup/shutdown)
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Load the ML model
-    print("Application startup...")
-    # You could initialize resources here, like DB connections, ML models, etc.
-    yield
-    # Clean up the ML model and release the resources
-    print("Application shutdown...")
+from backend.core.orchestrator import AnalysisOrchestrator
 
-app = FastAPI(lifespan=lifespan)
+# --- Pydantic Models ---
+class AnalyzeRequest(BaseModel):
+    ticker: str
+    interval: str = "1d"
+    num_candles: int = 150 # Changed from days to num_candles
+    exchange: str | None = None
+    language: str | None = Field(default="English", alias="language")
 
-@app.get("/")
-async def read_root():
-    return {"message": "Welcome to Project Alpha - AI Technical Analysis Service"}
+class AnalyzeResponse(BaseModel):
+    image_base64: str
+    analysis_text: str
 
-# Placeholder for the main analysis endpoint
-@app.post("/api/analyze/")
-async def analyze_stock(stock_code: str = Query(..., description="Stock ticker symbol, e.g., AAPL or BTC-USD")):
-    # This will eventually call the report_service
-    return {"stock_code": stock_code, "status": "analysis_pending", "message": "Full analysis endpoint is a work in progress."}
+# --- FastAPI App Initialization ---
+app = FastAPI(
+    title="AI Technical Analysis Service",
+    description="An API for generating technical analysis reports for stock tickers.",
+)
 
-@app.get("/api/chart/generate/{ticker_symbol}", 
-         response_class=StreamingResponse, 
-         summary="Generate Stock Chart Image",
-         description="Generates a K-line chart image for the given ticker symbol with MA, MACD, RSI, and Bollinger Bands.")
-async def generate_chart_api(
-    ticker_symbol: str,
-    days: int = Query(20, description="Number of past days for the chart data", ge=5, le=365),
-    interval: str = Query("1h", description="Data interval (e.g., 1m, 15m, 1h, 1d)")
-):
+# --- CORS Configuration ---
+# This is crucial for allowing the frontend to communicate with the backend
+# when they are served on different ports (e.g., frontend on 8000, backend on 8001).
+origins = [
+    "http://localhost",
+    "http://localhost:8000", # Default port for `python -m http.server`
+    "http://127.0.0.1",
+    "http://127.0.0.1:8000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"], # Allow all methods
+    allow_headers=["*"], # Allow all headers
+)
+
+# --- API Endpoints ---
+@app.post("/api/analyze", response_model=AnalyzeResponse)
+async def analyze_stock(request: AnalyzeRequest):
     """
-    Endpoint to generate and return a stock chart image.
-    - **ticker_symbol**: The stock or crypto symbol (e.g., AAPL, BTC-USD).
-    - **days**: Number of past days of data to display on the chart (min 5, max 365).
-    - **interval**: Data interval. Common ones: 1m, 5m, 15m, 1h, 1d.
-                      (Refer to yfinance for exact supported intervals like 1wk, 1mo).
+    This endpoint receives a stock symbol and other optional parameters,
+    runs the analysis orchestrator, and returns the report.
     """
+    print(f"Received analysis request for: {request.ticker} ({request.interval})")
     try:
-        print(f"API call to generate chart for {ticker_symbol}, days={days}, interval={interval}")
-        image_bytes_io = await chart_gen.generate_chart_image(
-            ticker_symbol=ticker_symbol,
-            days=days,
-            interval=interval,
-            return_bytes=True
-        )
-
-        if image_bytes_io is None:
-            print(f"Chart generation failed for {ticker_symbol}, image_bytes_io is None.")
-            raise HTTPException(status_code=500, detail=f"Chart generation failed for {ticker_symbol}. Could not fetch data or render chart.")
-
-        image_bytes_io.seek(0) # Reset stream position to the beginning
+        orchestrator = AnalysisOrchestrator()
         
-        print(f"Successfully generated chart for {ticker_symbol}. Returning image stream.")
-        return StreamingResponse(image_bytes_io, media_type="image/png")
+        final_report_path, error = await orchestrator.generate_report(
+            ticker=request.ticker,
+            interval=request.interval,
+            num_candles=request.num_candles
+        )
+        
+        if error:
+            print(f"An error occurred: {error}")
+            raise HTTPException(status_code=500, detail=f"Report generation failed: {error}")
 
-    except HTTPException as http_exc: # Re-raise HTTPException
-        raise http_exc 
+        if not final_report_path or not os.path.exists(final_report_path):
+            print(f"An error occurred: Final report image not found at {final_report_path}")
+            raise HTTPException(status_code=500, detail="Report generation failed: Final report image not found.")
+
+        # The orchestrator now returns the final report image path directly.
+        # The analysis markdown is an intermediate file in the same directory.
+        analysis_md_path = os.path.join(os.path.dirname(final_report_path), "analysis.md")
+
+        with open(final_report_path, "rb") as image_file:
+            image_base64_str = base64.b64encode(image_file.read()).decode("utf-8")
+
+        analysis_text = ""
+        if os.path.exists(analysis_md_path):
+             with open(analysis_md_path, "r", encoding="utf-8") as text_file:
+                analysis_text = text_file.read()
+        else:
+            print(f"Warning: analysis.md file not found at {analysis_md_path}")
+
+        image_data_url = f"data:image/png;base64,{image_base64_str}"
+        
+        return AnalyzeResponse(
+            image_base64=image_data_url,
+            analysis_text=analysis_text,
+        )
+    except HTTPException as http_exc:
+        # Re-raise HTTPException to let FastAPI handle it
+        raise http_exc
     except Exception as e:
-        print(f"An unexpected error occurred during chart generation for {ticker_symbol}: {e}")
-        # Log the full exception for debugging
+        print(f"An unexpected error occurred in /api/analyze: {e}")
+        # Log the full traceback for debugging
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"An unexpected server error occurred while generating the chart for {ticker_symbol}.")
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {str(e)}")
+
+# --- Serving Frontend ---
+# This mounts the 'frontend' directory, allowing FastAPI to serve the static files.
+# This is an alternative to running a separate python http.server.
+app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    """Serve the main HTML file."""
+    html_file_path = os.path.join(project_root, "frontend", "index.html")
+    if not os.path.exists(html_file_path):
+        return HTMLResponse(content="<h1>Index.html not found!</h1>", status_code=404)
+    return FileResponse(html_file_path)
 
 # To run this app (from the project_alpha directory):
 # Ensure .venv is activated: source .venv/bin/activate (or .venv\Scripts\activate on Windows)
