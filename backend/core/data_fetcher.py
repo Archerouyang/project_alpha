@@ -132,9 +132,12 @@ def get_ohlcv_data(
             print(f"No data fetched for ticker {ticker} (DataFrame is empty).")
             return None, None
 
-        df.sort_index(ascending=True, inplace=True)
-        
-        df_trimmed = df.tail(num_candles).copy() if len(df) > num_candles else df.copy()
+        # Critical Step: Ensure the DataFrame's index is named 'date'.
+        # This name is relied upon by downstream processes.
+        df.index.name = 'date'
+
+        # Trim the DataFrame to the requested number of candles.
+        df_trimmed = df.tail(num_candles)
 
         print(f"Successfully fetched {len(df_trimmed)} data points for '{ticker}'.")
         return df, df_trimmed

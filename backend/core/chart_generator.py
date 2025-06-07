@@ -144,6 +144,16 @@ class ChartGenerator:
         print(f"Extracted Key Data: {key_data}")
         return key_data
 
+    def extract_key_data(self, raw_df: pd.DataFrame) -> Optional[dict]:
+        """
+        Public method to calculate indicators and extract key data from a raw DataFrame.
+        This is a pure data processing method, no browser involved.
+        """
+        if raw_df is None or raw_df.empty:
+            return None
+        df_with_indicators = self._calculate_indicators(raw_df)
+        return self._extract_key_data(df_with_indicators)
+
     def generate_chart_from_df(self, raw_df: pd.DataFrame, ticker_symbol: str, interval: str) -> Tuple[Optional[bytes], Optional[dict]]:
         """
         Generates a chart image from a DataFrame using a self-contained, synchronous Playwright instance.
