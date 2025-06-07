@@ -4,21 +4,21 @@ import os
 import json
 import subprocess
 import sys
+import time
+import uuid
 from datetime import datetime
 from typing import Optional, Tuple
 
-# The imports are now simplified as we've consolidated logic
-# No longer need to import ChartGenerator or Browser from playwright
+import pandas as pd
+from backend.core.chart_generator import ChartGenerator
 from backend.core.llm_analyzer import LLMAnalyzer
-from backend.core.report_converter import ReportConverter
 from .data_fetcher import get_ohlcv_data
 
 class AnalysisOrchestrator:
     def __init__(self, output_dir: str = "generated_reports"):
         self.output_dir = output_dir
         self.llm_analyzer = LLMAnalyzer()
-        # The converter is now only used for its path logic, not its async methods.
-        # self.report_converter = ReportConverter()
+        self.chart_generator = ChartGenerator()
         os.makedirs(self.output_dir, exist_ok=True)
         print(f"AnalysisOrchestrator initialized. Output directory: {self.output_dir}")
 
@@ -30,33 +30,35 @@ class AnalysisOrchestrator:
         os.makedirs(report_dir, exist_ok=True)
         print(f"Orchestrator: Created output directory: {report_dir}")
 
+        temp_data_filename = f"data_{uuid.uuid4()}.json"
+        temp_data_path = os.path.join(report_dir, temp_data_filename)
+
         chart_path = os.path.join(report_dir, "chart.png")
-        key_data_path = os.path.join(report_dir, "key_data.json")
         analysis_path = os.path.join(report_dir, "analysis.md")
         final_report_path = os.path.join(report_dir, "final_report.png")
         
-        return report_dir, chart_path, key_data_path, analysis_path, final_report_path
+        return report_dir, temp_data_path, chart_path, analysis_path, final_report_path
+
+    async def _run_cli_in_executor(self, command: list) -> bool:
+        """Runs a blocking CLI command in a separate thread to avoid blocking the asyncio event loop."""
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, self._run_cli_command, command)
+        return result
 
     def _run_cli_command(self, command: list, env: Optional[dict] = None) -> bool:
         """
-        Runs a command-line interface script as a subprocess, ensuring critical
-        environment variables are passed down.
+        Runs a command-line interface script as a subprocess.
         """
         process_env = os.environ.copy()
         if env:
             process_env.update(env)
         
-        # Ensure UTF-8 encoding for all subprocess I/O
         process_env['PYTHONIOENCODING'] = 'utf-8'
 
-        # Explicitly pass API keys to the subprocess environment. This is the most
-        # reliable way to ensure the subprocess has the necessary credentials.
         for key in ["FMP_API_KEY", "DEEPSEEK_API_KEY"]:
             value = os.getenv(key)
             if value:
                 process_env[key] = value
-            else:
-                print(f"Orchestrator Warning: {key} not found in the main process environment. The CLI script might fail if it needs it.")
 
         print(f"Orchestrator: Executing command: {' '.join(command)}")
         try:
@@ -65,12 +67,13 @@ class AnalysisOrchestrator:
                 check=True,
                 capture_output=True,
                 text=True,
-                encoding='utf-8', # Specify encoding for capturing output
-                errors='replace', # Handle potential encoding errors gracefully
+                encoding='utf-8',
+                errors='replace',
                 env=process_env
             )
-            print("Orchestrator: CLI script stdout:")
-            print(result.stdout)
+            if result.stdout:
+                print("Orchestrator: CLI script stdout:")
+                print(result.stdout)
             if result.stderr:
                 print("Orchestrator: CLI script stderr:")
                 print(result.stderr)
@@ -86,74 +89,121 @@ class AnalysisOrchestrator:
             return False
 
     async def generate_report(self, ticker: str, interval: str, num_candles: int, exchange: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        start_time = time.monotonic()
         print(f"--- Orchestrator: Starting report for {ticker} (Exchange: {exchange or 'N/A'}) ---")
-        report_dir, chart_path, key_data_path, analysis_path, final_report_path = self._create_report_paths(ticker, interval)
         
-        # --- Step 1: Generate Chart and Key Data via CLI ---
+        report_dir, temp_data_path, chart_path, analysis_path, final_report_path = self._create_report_paths(ticker, interval)
+        
+        time_s1_fetch_start = time.monotonic()
+        
+        # Run the synchronous, blocking data fetcher in a thread to not block the event loop
+        loop = asyncio.get_running_loop()
+        _, ohlcv_df = await loop.run_in_executor(
+            None, get_ohlcv_data, ticker, interval, num_candles, exchange
+        )
+
+        if ohlcv_df is None or ohlcv_df.empty:
+            print(f"Orchestrator: Failed to fetch data for {ticker}. Aborting.")
+            return None, "Data fetching failed."
+        # Save data to temp file for the CLI script, using a robust orientation
+        ohlcv_df.to_json(temp_data_path, orient='split')
+        time_s1_fetch_end = time.monotonic()
+
+        key_data = self.chart_generator.extract_key_data(ohlcv_df)
+        if not key_data:
+            print(f"Orchestrator: Failed to calculate key data for {ticker}. Aborting.")
+            return None, "Key data calculation failed."
+        
+        print("\n--- Orchestrator: Starting parallel execution of Chart Generation and LLM Analysis ---")
+        time_s3_parallel_start = time.monotonic()
+
         python_executable = sys.executable
         chart_cli_script = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts', 'generate_chart_cli.py'))
-        
         chart_command = [
-            python_executable, chart_cli_script,
-            "--ticker", ticker, "--interval", interval, "--num-candles", str(num_candles),
-            "--output-image", chart_path, "--output-data", key_data_path
+            python_executable, chart_cli_script, "--ticker", ticker, "--interval", interval,
+            "--input-data-file", temp_data_path, "--output-image", chart_path,
+            "--output-data", os.path.join(report_dir, "dummy_key_data.json") 
         ]
-        if exchange:
-            chart_command.extend(["--exchange", exchange])
+        chart_task = self._run_cli_in_executor(chart_command)
 
-        if not self._run_cli_command(chart_command):
+        llm_task = self.llm_analyzer.analyze_chart_image(None, ticker, key_data)
+
+        results = await asyncio.gather(chart_task, llm_task, return_exceptions=True)
+        time_s3_parallel_end = time.monotonic()
+
+        chart_success, analysis_text = None, None
+        for result in results:
+            if isinstance(result, bool):
+                chart_success = result
+            elif isinstance(result, str):
+                analysis_text = result
+            elif isinstance(result, Exception):
+                print(f"Orchestrator: An error occurred during parallel execution: {result}")
+                return None, f"An error occurred in a parallel task: {result}"
+        
+        if not chart_success or not os.path.exists(chart_path):
             print(f"Orchestrator: Chart generation failed for {ticker}. Aborting.")
             return None, "Chart generation via CLI script failed."
-        
-        # --- Step 2: Load generated data and pass to LLM ---
-        try:
-            with open(chart_path, "rb") as f:
-                chart_image_bytes = f.read()
-            with open(key_data_path, "r", encoding="utf-8") as f:
-                key_data = json.load(f)
-            print(f"Orchestrator: Loaded chart and data for {ticker}.")
-        except Exception as e:
-            print(f"Orchestrator: Failed to load generated chart/data files for {ticker}. Aborting. Error: {e}")
-            return None, "Could not load data files generated by the chart script."
 
-        analysis_text = await self.llm_analyzer.analyze_chart_image(chart_image_bytes, ticker, key_data)
         if not analysis_text:
             print(f"Orchestrator: Failed to get analysis from LLM for {ticker}. Aborting.")
             return None, "LLM analysis failed."
-        
+
         with open(analysis_path, "w", encoding="utf-8") as f:
             f.write(analysis_text)
         print(f"Orchestrator: Markdown analysis saved to {analysis_path}")
         
-        # --- Step 3: Convert Markdown to Final Report Image via CLI ---
+        time_s4_convert_start = time.monotonic()
         report_cli_script = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts', 'convert_report_cli.py'))
+        
+        key_data_json_string = json.dumps(key_data)
+
         report_command = [
             python_executable, report_cli_script,
             "--markdown-file", analysis_path,
             "--chart-file", chart_path,
-            "--output-file", final_report_path
+            "--output-file", final_report_path,
+            "--ticker", ticker,
+            "--interval", interval,
+            "--key-data-json", key_data_json_string,
+            "--author", "Archerouyang",
+            "--avatar-path", "assets/mc.png"
         ]
-
-        if not self._run_cli_command(report_command):
+        if not await self._run_cli_in_executor(report_command):
             print(f"--- Orchestrator: Failed to generate final report image for {ticker}. ---")
             return None, "Report conversion via CLI script failed."
+        time_s4_convert_end = time.monotonic()
         
-        # --- Step 4: Final Verification and Return ---
         if not os.path.exists(final_report_path):
             print(f"--- Orchestrator: Final report image not found at expected path for {ticker}. ---")
             return None, "Final report image not found after script execution."
         
-        print(f"--- Orchestrator: Successfully generated report for {ticker} at {final_report_path} ---")
+        try:
+            os.remove(temp_data_path)
+            print(f"Orchestrator: Cleaned up temporary file {temp_data_path}")
+        except OSError as e:
+            print(f"Orchestrator: Error cleaning up temporary file: {e}")
+
+        end_time = time.monotonic()
+
+        print("\n--- PERFORMANCE METRICS (Parallel) ---")
+        print(f"Data Fetching:         {time_s1_fetch_end - time_s1_fetch_start:.2f}s")
+        print(f"Parallel Task Block:   {time_s3_parallel_end - time_s3_parallel_start:.2f}s (Chart Gen + LLM Analysis)")
+        print(f"Report Conversion:     {time_s4_convert_end - time_s4_convert_start:.2f}s")
+        print("---------------------------")
+        print(f"Total Orchestration Time: {end_time - start_time:.2f}s")
+        print(f"--- Orchestrator: Successfully generated report for {ticker} at {final_report_path} ---\n")
+        
         return final_report_path, None
 
-# This part is for direct script execution testing, which is less relevant now.
 async def main_test():
+    # To run this test, you need a .env file in the project root
+    # with DEEPSEEK_API_KEY and FMP_API_KEY
     import load_dotenv
     load_dotenv.load_dotenv()
     
     orchestrator = AnalysisOrchestrator()
-    # Test with a common stock
-    final_report_path, error = await orchestrator.generate_report("AAPL", "1d", 90, None)
+    final_report_path, error = await orchestrator.generate_report("NVDA", "1d", 120, None)
     
     if error:
         print(f"An error occurred: {error}")
@@ -161,6 +211,5 @@ async def main_test():
         print(f"Successfully generated report: {final_report_path}")
 
 if __name__ == '__main__':
-    # Add sys to path to find python executable for subprocess
     import sys
     asyncio.run(main_test()) 

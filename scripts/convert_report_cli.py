@@ -2,6 +2,7 @@
 import argparse
 import os
 import sys
+import json
 
 # Add the project root to the Python path to allow importing from 'backend'
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -16,11 +17,16 @@ def main():
     Command-line interface to convert a markdown file and a chart image
     into a single final report image.
     """
-    parser = argparse.ArgumentParser(description="Convert a markdown file and chart to a report image.")
-    parser.add_argument("--markdown-file", type=str, required=True, help="Path to the input markdown file.")
-    parser.add_argument("--chart-file", type=str, required=True, help="Path to the chart image (e.g., chart.png).")
-    parser.add_argument("--output-file", type=str, required=True, help="Path to save the final report image.")
-    parser.add_argument("--width", type=int, default=800, help="Width of the report image in pixels.")
+    parser = argparse.ArgumentParser(description="Convert analysis into a polished report image.")
+    parser.add_argument("--markdown-file", required=True, help="Path to the input markdown file.")
+    parser.add_argument("--chart-file", required=True, help="Path to the chart image.")
+    parser.add_argument("--output-file", required=True, help="Path to save the final report image.")
+    parser.add_argument("--ticker", required=True, help="Ticker symbol for the report header.")
+    parser.add_argument("--interval", required=True, help="Interval for the report header.")
+    parser.add_argument("--key-data-json", required=True, help="JSON string of key data for the dashboard.")
+    parser.add_argument("--author", help="Author signature for the footer.")
+    parser.add_argument("--avatar-path", help="Path to the author's avatar image.")
+    parser.add_argument("--width", type=int, default=800, help="Width of the report image.")
     args = parser.parse_args()
 
     print("CLI (Report): Starting report conversion...")
@@ -37,13 +43,25 @@ def main():
         print(f"CLI (Report): Error reading markdown file: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 2. Convert to image
+    # 2. Parse key data
+    try:
+        key_data = json.loads(args.key_data_json)
+    except json.JSONDecodeError as e:
+        print(f"CLI Error: Failed to parse key_data_json: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # 3. Convert to image
     try:
         converter = ReportConverter(width=args.width)
         success = converter.markdown_to_image(
             markdown_text=markdown_text,
             chart_image_path=args.chart_file,
-            output_image_path=args.output_file
+            output_image_path=args.output_file,
+            ticker=args.ticker,
+            interval=args.interval,
+            key_data=key_data,
+            author=args.author,
+            avatar_path=args.avatar_path
         )
         if not success:
             raise RuntimeError("The conversion method returned False.")
