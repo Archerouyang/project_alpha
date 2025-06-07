@@ -155,11 +155,20 @@ class AnalysisOrchestrator:
         
         time_s4_convert_start = time.monotonic()
         report_cli_script = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts', 'convert_report_cli.py'))
-        report_command = [
-            python_executable, report_cli_script, "--markdown-file", analysis_path,
-            "--chart-file", chart_path, "--output-file", final_report_path
-        ]
+        
+        key_data_json_string = json.dumps(key_data)
 
+        report_command = [
+            python_executable, report_cli_script,
+            "--markdown-file", analysis_path,
+            "--chart-file", chart_path,
+            "--output-file", final_report_path,
+            "--ticker", ticker,
+            "--interval", interval,
+            "--key-data-json", key_data_json_string,
+            "--author", "Archerouyang",
+            "--avatar-path", "assets/mc.png"
+        ]
         if not await self._run_cli_in_executor(report_command):
             print(f"--- Orchestrator: Failed to generate final report image for {ticker}. ---")
             return None, "Report conversion via CLI script failed."
