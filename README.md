@@ -1,24 +1,24 @@
-# AI Technical Analysis Service
+# AI-Powered Technical Analysis Service
 
-This project is a sophisticated financial analysis service that automatically generates technical analysis reports for stock tickers. It fetches the latest market data, creates detailed candlestick charts with technical indicators, generates an in-depth analysis using a Large Language Model (LLM), and combines them into a single, clean image-based report.
+This project is a sophisticated financial analysis service that automatically generates technical analysis reports for stocks and cryptocurrencies. It fetches the latest market data, creates detailed candlestick charts with technical indicators, generates an in-depth analysis using a Large Language Model (LLM), and combines them into a single, clean image-based report, all accessible through a simple web interface.
 
 ## Features
 
-- **Automated Data Fetching**: Utilizes the OpenBB SDK to fetch historical OHLCV (Open, High, Low, Close, Volume) data for any given stock ticker.
-- **Advanced Chart Generation**: Renders high-quality financial charts using the TradingView Lightweight Charts library via Playwright for headless browser automation.
-- **Indicator Support**: Automatically calculates and overlays key technical indicators, including Bollinger Bands and Stochastic RSI.
-- **AI-Powered Analysis**: Leverages the DeepSeek API to generate a four-paragraph narrative analysis based on a sophisticated prompt grounded in established financial theories (Al Brooks Price Action, etc.).
-- **Report Composition**: Combines the generated chart and the AI analysis into a single, shareable image report.
-- **Modular Architecture**: Built with a clean, modular structure separating concerns for data fetching, chart generation, AI analysis, and orchestration.
+- **Web UI**: A clean, chat-like interface to request and display analysis reports.
+- **Equity and Crypto Support**: Intelligently fetches data for both stock tickers (e.g., `AAPL`) and cryptocurrency pairs (e.g., `BTC-USD`).
+- **Exchange-Specific Data**: Allows specifying a cryptocurrency exchange (e.g., `KRAKEN`, `BINANCE`) for precise data sourcing.
+- **Flexible Time Intervals**: Supports various timeframes like `1h`, `4h`, `1d` (default), `1w`.
+- **Candle-Count Based Charts**: Generates charts with a fixed number of candles (e.g., 150) for consistent analysis across different time intervals, rather than a fixed date range.
+- **AI-Powered Analysis**: Leverages the DeepSeek API to generate a narrative analysis based on the chart and key data points.
+- **Robust Architecture**: A decoupled architecture where resource-intensive Playwright operations (charting, report rendering) are executed in isolated CLI scripts, avoiding common `asyncio` event loop conflicts with web servers like Uvicorn.
 
 ## Technology Stack
 
-- **Backend**: Python 3.11
-- **API/Framework**: FastAPI (scaffolding, not fully implemented)
-- **Data Source**: OpenBB SDK
+- **Backend**: Python 3.11 with FastAPI
+- **Frontend**: HTML, CSS, Vanilla JavaScript
+- **Data Source**: OpenBB SDK with Financial Modeling Prep (FMP) as the provider.
 - **Chart Rendering**: Playwright & TradingView Lightweight Charts
-- **AI Analysis**: DeepSeek API (via the `openai` Python library)
-- **Image Manipulation**: Pillow (PIL) was used and later removed; final composition is handled via HTML/CSS rendering in Playwright.
+- **AI Analysis**: DeepSeek API (via the `openai` library)
 - **Dependency Management**: `uv`
 
 ---
@@ -27,7 +27,7 @@ This project is a sophisticated financial analysis service that automatically ge
 
 1.  **Clone the Repository**:
     ```bash
-    git clone <your-repository-url>
+    git clone https://github.com/Archerouyang/project_alpha.git
     cd project_alpha
     ```
 
@@ -39,41 +39,49 @@ This project is a sophisticated financial analysis service that automatically ge
 
     # Create and activate the virtual environment
     uv venv
-    source .venv/bin/activate  # On Windows, use: .\.venv\Scripts\activate
+    source .venv/bin/activate  # On Windows, use: .\.venv\Scripts\Activate.ps1
     ```
 
 3.  **Install Dependencies**:
+    The `--prerelease=allow` flag is currently required to resolve a dependency conflict with OpenBB.
     ```bash
-    uv pip install -r requirements.txt
+    uv pip install -r requirements.txt --prerelease=allow
     ```
 
 4.  **Set Up API Keys**:
     - Create a file named `.env` in the root of the project directory.
-    - Add your DeepSeek and Financial Modeling Prep (FMP) API keys to the `.env` file like this:
+    - Add your DeepSeek and Financial Modeling Prep (FMP) API keys to the file:
       ```env
       DEEPSEEK_API_KEY="your_deepseek_api_key"
       FMP_API_KEY="your_fmp_api_key"
       ```
-    - The DeepSeek key is loaded by our application.
-    - This project uses FMP (Financial Modeling Prep) via the OpenBB SDK as its primary data source. The `FMP_API_KEY` is required for fetching market data. The OpenBB SDK can be configured with many different data source providers, but this project is hardcoded to use FMP for simplicity.
+    - The `FMP_API_KEY` is required for fetching all market data.
+    - The `DEEPSEEK_API_KEY` is required for the AI analysis portion.
 
 ---
 
-## How to Run
+## How to Run the Service
 
-The main entry point for generating a report is the `orchestrator.py` script.
+The application is run as a web server using Uvicorn.
 
--   **Run from the project root directory**:
+1.  **Ensure your virtual environment is activated.**
+2.  **Start the server from the project root directory**:
     ```bash
-    python -m backend.core.orchestrator
+    uvicorn main:app --reload
     ```
--   This will run the default test case for "TSLA" with a "1h" interval. The final report image will be saved in a timestamped folder inside the `generated_reports` directory.
+3.  **Open your browser** and navigate to `http://127.0.0.1:8000`.
 
-## To-Do / Future Enhancements
+## How to Use the Interface
 
-- [ ] Implement a full FastAPI backend to expose report generation via an API endpoint.
-- [ ] Develop a user-facing frontend to input tickers and view reports.
-- [ ] Expand the range of supported technical indicators.
-- [ ] Implement multi-modal analysis by sending the chart image to a vision-capable LLM.
-- [ ] Add more robust error handling and logging.
-- [ ] Containerize the application with Docker for easier deployment. 
+Enter your request in the input box using the following format:
+
+**`[TICKER] [EXCHANGE?(Optional)] [INTERVAL?(Optional)]`**
+
+-   **TICKER**: The stock symbol or crypto pair (e.g., `AAPL`, `BTC-USD`).
+-   **EXCHANGE**: (Optional) The crypto exchange (e.g., `KRAKEN`, `BINANCE`). Omit for stocks.
+-   **INTERVAL**: (Optional) The time interval (e.g., `1h`, `4h`, `1d`, `1w`). Defaults to `1d`.
+
+**Examples:**
+- `TSLA 4h`
+- `BTC-USD KRAKEN 1h`
+- `NVDA` 
