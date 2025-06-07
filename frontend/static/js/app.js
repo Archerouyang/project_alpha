@@ -1,88 +1,144 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const stockCodeInput = document.getElementById('stock-code');
-    const analyzeButton = document.getElementById('analyze-button');
-    
-    const resultsSection = document.getElementById('results-section');
-    const reportTitle = document.getElementById('report-title');
-    const chartImage = document.getElementById('chart-image');
-    const analysisText = document.getElementById('analysis-text');
-    
-    const loadingSection = document.getElementById('loading-section');
-    const errorSection = document.getElementById('error-section');
-    const errorMessage = document.getElementById('error-message');
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendButton = document.getElementById('send-button');
 
-    analyzeButton.addEventListener('click', async () => {
-        const stockCode = stockCodeInput.value.trim().toUpperCase();
-        if (!stockCode) {
-            showError("Please enter a stock code.");
-            return;
-        }
+    const handleUserInput = () => {
+        const command = userInput.value.trim();
+        if (!command) return;
 
-        showLoading(true);
-        hideError();
-        hideResults();
+        appendMessage(command, 'user');
+        userInput.value = '';
+        processCommand(command);
+    };
 
-        try {
-            const formData = new FormData();
-            formData.append('stock_code', stockCode);
-
-            const response = await fetch('/api/analyze/', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ detail: "An unknown error occurred."}) );
-                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-            }
-
-            const result = await response.json();
-
-            if (result.error) {
-                showError(result.error);
-            } else if (result.data) {
-                displayResults(result.data);
-            } else {
-                // Fallback for initial backend responses that might not match final schema
-                if (result.stock_code && result.chart_image_url && result.analysis_text){
-                    displayResults(result); 
-                } else if (result.stock_code && result.status === "analysis_pending") { 
-                    showError(`Analysis for ${result.stock_code} is pending. Backend placeholder response.`);
-                } else {
-                    showError("Received an unexpected response format from the server.");
-                }
-            }
-
-        } catch (error) {
-            console.error("Fetch error:", error);
-            showError(error.message || "Failed to fetch analysis. Check console for details.");
-        } finally {
-            showLoading(false);
+    sendButton.addEventListener('click', handleUserInput);
+    userInput.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') {
+            handleUserInput();
         }
     });
 
-    function displayResults(data) {
-        reportTitle.textContent = `Analysis Report for ${data.stock_code}`;
-        chartImage.src = data.chart_image_url;
-        chartImage.alt = `${data.stock_code} Chart`;
-        analysisText.textContent = data.analysis_text;
-        resultsSection.style.display = 'block';
+    function appendMessage(text, type, data = null) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', `${type}-message`);
+
+        if (type === 'ai' && data) {
+            // Create image element
+            if (data.image_base64) {
+                const img = document.createElement('img');
+                img.src = data.image_base64; // The string already includes "data:image/png;base64,"
+                img.alt = 'Analysis Chart';
+                messageDiv.appendChild(img);
+            }
+            // Create text content element
+            if (data.analysis_text) {
+                const textContent = document.createElement('div');
+                textContent.classList.add('analysis-content');
+                textContent.textContent = data.analysis_text; // Use textContent to handle \n correctly with 'white-space: pre-wrap'
+                messageDiv.appendChild(textContent);
+            }
+        } else {
+            messageDiv.textContent = text;
+        }
+
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return messageDiv;
     }
 
-    function showLoading(isLoading) {
-        loadingSection.style.display = isLoading ? 'block' : 'none';
+    function processCommand(command) {
+        // New simplified regex: symbol is mandatory, interval is optional
+        // Example matches: "TSLA", "TSLA 4h", "AAPL 日线"
+        const commandRegex = /^([A-Z0-9\.-]+)\s*(\S+)?$/i;
+        const match = command.match(commandRegex);
+
+        if (!match) {
+            appendMessage('格式错误，请输入：[股票代码] [时间周期(可选)]', 'error');
+            return;
+        }
+
+        const symbol = match[1];
+        const intervalRaw = match[2]; // This might be undefined if not provided
+
+        // Map user-friendly intervals to API-friendly intervals
+        const intervalMap = {
+            "1小时": "1h", "4小时": "4h", "日线": "1d", "周线": "1w", "月线": "1mo",
+            "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1w", "1mo": "1mo"
+        };
+        // Default to '1d' if interval is not provided or not in map
+        const interval = intervalRaw ? (intervalMap[intervalRaw] || '1d') : '1d';
+
+        const payload = {
+            ticker: symbol.toUpperCase(),
+            interval: interval,
+            num_candles: 150,
+            // These fields are no longer parsed from the input but could be added back
+            // exchange: undefined,
+            // language: undefined,
+        };
+
+        callAnalyzeApi(payload);
     }
 
-    function hideResults() {
-        resultsSection.style.display = 'none';
+    async function callAnalyzeApi(payload) {
+        const loadingMessage = appendMessage('分析中，请稍候...', 'loading');
+
+        try {
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            chatContainer.removeChild(loadingMessage);
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            appendMessage(null, 'ai', data);
+
+        } catch (error) {
+            if (chatContainer.contains(loadingMessage)) {
+                chatContainer.removeChild(loadingMessage);
+            }
+            appendMessage(`分析失败: ${error.message}`, 'error');
+            console.error('Fetch error:', error);
+        }
     }
 
-    function showError(message) {
-        errorMessage.textContent = message;
-        errorSection.style.display = 'block';
+    function displayAnalysis(data) {
+        const chatContainer = document.getElementById('chat-container');
+
+        // Create a new message container for the AI's response
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message ai-message';
+
+        // Create the image element for the report
+        if (data.image) {
+            const img = document.createElement('img');
+            img.src = `data:image/png;base64,${data.image}`;
+            img.alt = "Analysis Report";
+            img.className = "analysis-image"; // Use a specific class for styling if needed
+            messageDiv.appendChild(img);
+        } else {
+            // If there's no image, display an error message
+            const errorP = document.createElement('p');
+            errorP.textContent = '抱歉，生成分析报告失败，未返回图片。';
+            messageDiv.appendChild(errorP);
+        }
+
+        // Append the new message to the chat container and scroll down
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
-    function hideError() {
-        errorSection.style.display = 'none';
+    function displayError(errorMessage) {
+        appendMessage(errorMessage, 'error');
     }
 }); 
