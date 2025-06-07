@@ -2,12 +2,13 @@
 import pandas as pd
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Tuple, List, Optional, Dict, Any
 from openbb import obb
 from dotenv import load_dotenv
+import math
 
-# Load environment variables from .env file
+# Load environment variables from .env file at the module level
 load_dotenv()
 
 # This file is now a collection of functions, not a class.
@@ -76,89 +77,85 @@ def _standardize_df_columns(df: pd.DataFrame) -> pd.DataFrame:
                 raise ValueError(f"Missing required column '{col}' after standardization.")
     return df[required_cols]
 
-CRYPTO_EXCHANGES = ["coinbase", "binance", "kraken", "kucoin", "gateio", "fmp"]
+# A list of known crypto exchanges supported by FMP via OpenBB
+# This helps in distinguishing between a crypto ticker and a stock ticker.
+KNOWN_CRYPTO_EXCHANGES = ["coinbase", "binance", "kraken", "kucoin", "gateio", "bitfinex"]
 
-async def get_ohlcv_data(
-    ticker_symbol: str,
-    days_history: int = 30,
-    interval: str = "1d",
-    extended_hours: bool = False
-) -> Tuple[Optional[List[Dict[str, Any]]], Optional[pd.DataFrame]]:
+def get_ohlcv_data(
+    ticker: str,
+    interval: str,
+    num_candles: int = 150,
+    exchange: Optional[str] = None
+) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     """
-    Fetches historical OHLCV data using the OpenBB SDK.
-    Returns both a data structure formatted for JS charting and the raw pandas DataFrame.
-
-    Args:
-        ticker_symbol (str): The stock symbol (e.g., "TSLA").
-        days_history (int): Number of past days to fetch data for.
-        interval (str): The data interval (e.g., "1h", "4h", "1d").
-        extended_hours (bool): Whether to include pre/post market data (for equities).
-
-    Returns:
-        A tuple containing:
-        - list: A list of dicts formatted for the frontend chart (OHLC & Volume).
-        - pd.DataFrame: The raw, unprocessed DataFrame from the provider.
-        Returns (None, None) if an error occurs.
+    Fetches OHLCV data for a given ticker, intelligently handling crypto vs. equity.
     """
-    print(f"Fetching data for '{ticker_symbol}': {days_history} days, interval '{interval}'...")
-    start_date = (datetime.now() - timedelta(days=days_history)).strftime('%Y-%m-%d')
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    openbb_interval = map_interval_to_openbb(interval)
-    
-    # Manually get the API key
-    fmp_api_key = _get_fmp_api_key()
+    print(f"Fetching data for '{ticker}' on exchange '{exchange or 'default'}' aiming for {num_candles} candles, interval '{interval}'...")
+
+    fmp_api_key = os.getenv("FMP_API_KEY")
     if not fmp_api_key:
-        print("FMP_API_KEY not found in .env file. Aborting data fetch.")
-        return None, None
+        print("CRITICAL: FMP_API_KEY not found in environment.")
+        raise ValueError("Missing FMP_API_KEY.")
+    obb.user.credentials.fmp_api_key = fmp_api_key
 
+    # Determine if the asset is crypto or equity
+    # A simple heuristic: if an exchange is provided and it's a known crypto exchange,
+    # or if the ticker contains a common crypto separator like '-', assume it's crypto.
+    is_crypto = (exchange and exchange.lower() in KNOWN_CRYPTO_EXCHANGES) or ('-' in ticker)
+    
+    days_to_fetch = _calculate_days_to_fetch(num_candles, interval, is_crypto)
+    start_date = (datetime.now() - timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
+    
     try:
-        # Manually log in to the provider with the key
-        obb.user.credentials.fmp_api_key = fmp_api_key
+        if is_crypto:
+            print(f"-> Detected as CRYPTO. Using obb.crypto.price.historical...")
+            # For crypto, the exchange is a direct parameter.
+            data = obb.crypto.price.historical(
+                symbol=ticker,
+                start_date=start_date,
+                interval=interval,
+                exchange=exchange, # Pass the exchange here
+                provider="fmp"
+            )
+        else:
+            print(f"-> Detected as EQUITY. Using obb.equity.price.historical...")
+            # For equity, FMP is the provider and doesn't need an 'exchange' parameter.
+            data = obb.equity.price.historical(
+                symbol=ticker,
+                start_date=start_date,
+                interval=interval,
+                provider="fmp"
+            )
         
-        # Using 'fmp' as the default provider for equity data.
-        data_obb = await asyncio.to_thread(
-            obb.equity.price.historical,
-            symbol=ticker_symbol,
-            start_date=start_date,
-            end_date=end_date,
-            interval=openbb_interval,
-            provider="fmp",
-            extended_hours=extended_hours
-        )
-
-        if not hasattr(data_obb, 'to_dataframe') or data_obb.to_dataframe().empty:
-            print(f"OpenBB returned no data for '{ticker_symbol}'.")
+        df = data.to_df()
+        if df.empty:
+            print(f"No data fetched for ticker {ticker} (DataFrame is empty).")
             return None, None
 
-        raw_df = data_obb.to_dataframe()
-        # The raw_df is returned for indicator calculations
-        print(f"Successfully fetched {len(raw_df)} data points for '{ticker_symbol}'.")
+        df.sort_index(ascending=True, inplace=True)
         
-        # This part formats the data specifically for the chart rendering
-        df_for_js = raw_df.copy()
-        df_for_js.columns = [col.lower() for col in df_for_js.columns]
-        
-        ohlc_data = []
-        volume_data = []
-        for timestamp, row in df_for_js.iterrows():
-            time_unix = int(timestamp.timestamp())
-            ohlc_data.append({
-                "time": time_unix,
-                "open": row['open'],
-                "high": row['high'],
-                "low": row['low'],
-                "close": row['close']
-            })
-            volume_color = 'rgba(0, 150, 136, 0.6)' if row['close'] >= row['open'] else 'rgba(255, 82, 82, 0.6)'
-            volume_data.append({"time": time_unix, "value": row['volume'], "color": volume_color})
+        df_trimmed = df.tail(num_candles).copy() if len(df) > num_candles else df.copy()
 
-        js_data = {
-            "ohlcData": ohlc_data,
-            "volumeData": volume_data
-        }
-
-        return js_data, raw_df
+        print(f"Successfully fetched {len(df_trimmed)} data points for '{ticker}'.")
+        return df, df_trimmed
 
     except Exception as e:
-        print(f"An error occurred during OpenBB data fetch for '{ticker_symbol}': {e}")
+        print(f"An error occurred while fetching data for {ticker}: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None
+
+def _calculate_days_to_fetch(num_candles: int, interval: str, is_crypto: bool) -> int:
+    """Helper function to estimate the number of calendar days to fetch."""
+    if is_crypto:
+        # Crypto markets run 24/7
+        candles_per_day_map = {'1d': 1, '4h': 6, '1h': 24}
+        buffer_multiplier = 1.2 # Smaller buffer needed for 24/7 markets
+    else:
+        # Equity markets have trading hours
+        candles_per_day_map = {'1d': 1, '4h': 2, '1h': 7}
+        buffer_multiplier = 1.7 # Larger buffer for weekends/holidays
+        
+    candles_per_day = candles_per_day_map.get(interval, 1)
+    days_to_fetch = math.ceil((num_candles / candles_per_day) * buffer_multiplier) + 2
+    return int(days_to_fetch)

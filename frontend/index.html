@@ -1,45 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project Alpha - AI Stock Analysis</title>
+    <title>AI 技术分析服务</title>
     <link rel="stylesheet" href="static/css/style.css">
 </head>
 <body>
-    <header>
-        <h1>AI Stock Technical Analysis</h1>
-    </header>
-    <main>
-        <section id="input-section">
-            <label for="stock-code">Enter Stock Code (e.g., AAPL, MSFT):</label>
-            <input type="text" id="stock-code" name="stock-code" placeholder="AAPL">
-            <button id="analyze-button">Analyze</button>
-        </section>
-
-        <section id="results-section" style="display: none;">
-            <h2 id="report-title"></h2>
-            <div id="chart-container">
-                <h3>K-Line Chart</h3>
-                <img id="chart-image" src="" alt="Stock Chart">
-            </div>
-            <div id="analysis-container">
-                <h3>AI Technical Analysis</h3>
-                <p id="analysis-text"></p>
-            </div>
-        </section>
-        
-        <section id="loading-section" style="display: none;">
-            <p>Loading analysis...</p>
-        </section>
-
-        <section id="error-section" style="display: none;">
-            <p id="error-message"></p>
-        </section>
-    </main>
-    <footer>
-        <p>&copy; 2024 Project Alpha by Archerouyang</p>
-    </footer>
+    <div id="chat-container">
+        <!-- The static welcome message will be removed. 
+             It will now be generated dynamically by app.js -->
+    </div>
+    <div id="input-area">
+        <input type="text" id="user-input" placeholder="例如: NVDA 日线">
+        <button id="send-button">发送</button>
+    </div>
     <script src="static/js/app.js"></script>
 </body>
 </html> 

@@ -79,16 +79,47 @@ def _get_deepseek_api_key() -> Optional[str]:
 
 
 class LLMAnalyzer:
-    def __init__(self):
-        self.api_key = _get_deepseek_api_key()
-        if not self.api_key:
-            raise ValueError("DEEPSEEK_API_KEY is not set correctly in the .env file.")
-        
-        self.client = AsyncOpenAI(
-            api_key=self.api_key,
-            base_url="https://api.deepseek.com"
-        )
-        print("LLMAnalyzer initialized with DeepSeek model 'deepseek-r1-0528' via direct API.")
+    """
+    Handles interaction with a large language model to analyze stock data.
+    It can be configured to use either a direct API client (like DeepSeek)
+    or a local model via a service like Ollama.
+    """
+    def __init__(self, model_provider: str = "deepseek", model: Optional[str] = None):
+        """
+        Initializes the LLM analyzer.
+        Args:
+            model_provider: The service providing the LLM ('deepseek' or 'ollama').
+            model: The specific model name to use. If None, a default is chosen.
+        """
+        self.model_provider = model_provider.lower()
+        if model:
+            self.model = model
+        else:
+            if self.model_provider == "deepseek":
+                self.model = "deepseek-chat" # Reverted to deepseek-chat as requested
+            elif self.model_provider == "ollama":
+                # A default local model, assuming one is served via Ollama
+                self.model = "llama3:instruct" 
+            else:
+                raise ValueError("Unsupported model provider. Choose 'deepseek' or 'ollama'.")
+
+        self.client = self._setup_client()
+        print(f"LLMAnalyzer initialized with {self.model_provider} model '{self.model}'.")
+
+    def _setup_client(self):
+        if self.model_provider == "deepseek":
+            api_key = _get_deepseek_api_key()
+            if not api_key:
+                raise ValueError("DEEPSEEK_API_KEY is not set correctly in the .env file.")
+            
+            return AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://api.deepseek.com"
+            )
+        else:
+            # For Ollama, we'll use a placeholder implementation
+            # This is a placeholder and should be replaced with actual Ollama integration
+            raise NotImplementedError("Ollama integration is not implemented yet.")
 
     async def analyze_chart_image(self, image_bytes: bytes, ticker_symbol: str, key_financial_data: dict) -> Optional[str]:
         """
@@ -101,7 +132,7 @@ class LLMAnalyzer:
             key_data_str = _format_key_data_for_prompt(key_financial_data)
             
             response = await self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.model,
                 messages=[
                     {"role": "system", "content": _get_system_prompt()},
                     {"role": "user", "content": _get_user_prompt(ticker_symbol, key_data_str)},

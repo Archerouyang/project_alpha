@@ -1,7 +1,8 @@
 # backend/core/report_converter.py
 import base64
 import markdown2
-from playwright.async_api import async_playwright
+import os
+from playwright.sync_api import sync_playwright
 
 class ReportConverter:
     def __init__(self, width: int = 800):
@@ -21,13 +22,15 @@ class ReportConverter:
         
         # Encode the chart image in base64
         try:
-            with open(chart_image_path, "rb") as image_file:
+            # Ensure the path is absolute for reliability in different contexts
+            abs_chart_path = os.path.abspath(chart_image_path)
+            with open(abs_chart_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
             image_data_uri = f"data:image/png;base64,{encoded_string}"
         except FileNotFoundError:
-            print(f"Error: Chart image not found at {chart_image_path}")
+            print(f"Error: Chart image not found at {abs_chart_path}")
             # Create a placeholder if the image is missing
-            image_data_uri = "https://via.placeholder.com/1200x800.png?text=Chart+Image+Not+Found"
+            image_data_uri = "https://via.placeholder.com/1280x720.png?text=Chart+Image+Not+Found"
 
 
         # The final HTML structure with embedded CSS for styling
@@ -42,22 +45,24 @@ class ReportConverter:
                 body {{
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
                     line-height: 1.6;
-                    color: #333;
-                    background-color: #f8f9fa;
+                    color: #e0e0e0;
+                    background-color: #121212;
                     margin: 0;
-                    padding: 20px;
+                    padding: 0; /* Remove padding from body */
                 }}
                 .container {{
-                    max-width: {self.width}px;
+                    width: {self.width}px;
                     margin: 0 auto;
-                    background-color: #fff;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                    background-color: #1e1e1e;
+                    /* No border-radius or shadow needed if we screenshot the element directly */
                     padding: 30px;
+                    box-sizing: border-box; /* Important for accurate width */
                 }}
                 h1, h2, h3, h4, h5, h6 {{
-                    color: #2c3e50;
+                    color: #00bcd4; /* Brighter color for titles */
                     margin-top: 1.5em;
+                    border-bottom: 1px solid #444;
+                    padding-bottom: 0.3em;
                 }}
                 img {{
                     max-width: 100%;
@@ -67,7 +72,8 @@ class ReportConverter:
                     margin-bottom: 20px;
                 }}
                 code {{
-                    background-color: #e9ecef;
+                    background-color: #333;
+                    color: #e0e0e0;
                     padding: 0.2em 0.4em;
                     margin: 0;
                     font-size: 85%;
@@ -90,12 +96,13 @@ class ReportConverter:
                     margin-top: 1em;
                 }}
                 th, td {{
-                    border: 1px solid #dee2e6;
+                    border: 1px solid #444;
                     padding: 0.75em;
                     text-align: left;
                 }}
                 th {{
-                    background-color: #f8f9fa;
+                    background-color: #333;
+                    color: #00bcd4;
                 }}
             </style>
         </head>
@@ -109,36 +116,37 @@ class ReportConverter:
         """
         return html_template
 
-    async def markdown_to_image(
+    def markdown_to_image(
         self,
         markdown_text: str,
         chart_image_path: str,
         output_image_path: str
     ) -> bool:
         """
-        Converts a markdown string and a chart image into a single image file.
+        Converts a markdown string and a chart image into a single image file using sync Playwright.
         """
-        print(f"ReportConverter: Starting conversion of markdown to image: {output_image_path}")
+        print(f"ReportConverter: Starting sync conversion of markdown to image: {output_image_path}")
 
         html_content = self._create_html(markdown_text, chart_image_path)
 
         try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch()
-                page = await browser.new_page()
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                page = browser.new_page()
                 
-                await page.set_viewport_size({ "width": self.width + 60, "height": 1080 })
+                # Set content first
+                page.set_content(html_content)
                 
-                await page.set_content(html_content)
-                
-                container_element = await page.query_selector('.container')
+                # Find the container element
+                container_element = page.query_selector('.container')
                 if not container_element:
                     print("Error: Could not find the .container element in the HTML.")
-                    await browser.close()
+                    browser.close()
                     return False
 
-                await container_element.screenshot(path=output_image_path)
-                await browser.close()
+                # Take screenshot of the specific element
+                container_element.screenshot(path=output_image_path)
+                browser.close()
 
                 print(f"ReportConverter: Successfully saved final report to {output_image_path}")
                 return True
