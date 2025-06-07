@@ -3,19 +3,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendButton = document.getElementById('send-button');
     const chatContainer = document.getElementById('chat-container');
 
-    // Display the initial welcome message
-    const welcomeText = `您好！请输入分析指令。格式：<br>
-        <strong>[代码] [交易所(可选)] [时间周期(可选)]</strong>
-        <br><br>
-        <strong>说明:</strong><br>
-        - <strong>代码:</strong> 股票代码或加密货币对 (例如: AAPL, BTC-USD)。<br>
-        - <strong>交易所:</strong> 通常用于加密货币 (例如: KRAKEN, BINANCE)，股票可省略。<br>
-        - <strong>时间周期:</strong> 例如 1h, 4h, 1d (日线), 1w (周线)。默认为 1d。
-        <br><br>
-        <strong>示例:</strong><br>
+    // Display the initial welcome message in persona
+    const welcomeText = `主人，您好！我是您的专属K线分析助手～ (´∀｀)♡<br>
+        您可以随时吩咐我分析感兴趣的股票或加密货币哦！<br>
+        <br>
+        只要告诉我代码就可以啦，比如：<br>
         <code>AAPL</code><br>
-        <code>TSLA 4h</code><br>
-        <code>BTC-USD KRAKEN 1h</code>`;
+        <code>TSLA 1h</code><br>
+        <code>BTC-USD KRAKEN</code>
+        <br><br>
+        我随时待命哦！(｡･ω･｡)ﾉ`;
     appendMessage(welcomeText, 'ai');
 
     sendButton.addEventListener('click', handleSend);
