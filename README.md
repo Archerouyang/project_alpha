@@ -49,12 +49,13 @@ This project is a sophisticated financial analysis service that automatically ge
 
 4.  **Set Up API Keys**:
     - Create a file named `.env` in the root of the project directory.
-    - Add your DeepSeek and OpenBB API keys to the `.env` file like this:
+    - Add your DeepSeek and Financial Modeling Prep (FMP) API keys to the `.env` file like this:
       ```env
       DEEPSEEK_API_KEY="your_deepseek_api_key"
-      OPENBB_API_KEY="your_openbb_api_key" 
+      FMP_API_KEY="your_fmp_api_key"
       ```
-    - The OpenBB key is loaded automatically by their SDK; the DeepSeek key is loaded by our application.
+    - The DeepSeek key is loaded by our application.
+    - This project uses FMP (Financial Modeling Prep) via the OpenBB SDK as its primary data source. The `FMP_API_KEY` is required for fetching market data. The OpenBB SDK can be configured with many different data source providers, but this project is hardcoded to use FMP for simplicity.
 
 ---
 
