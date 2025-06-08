@@ -48,7 +48,7 @@ RUN pip install uv
 
 # Install dependencies using uv
 # Using --system flag to install into the system Python environment
-RUN uv pip install --system --no-cache -r requirements.txt
+RUN uv pip install --system --no-cache --prerelease=allow -r requirements.txt
 
 # 6. Install Playwright browsers
 # This command reads the browser versions from the installed playwright package
