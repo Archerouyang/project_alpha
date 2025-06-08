@@ -108,10 +108,17 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
-# Output files
+# Project-specific ignores
+# -------------------------
+# Ignore the .env file in the root directory
+.env
+# Ignore generated report images and data
 generated_reports/
+# Ignore log files
+*.log
 
 # Config files that might contain secrets
+# Ignore environment files in a potential config folder
 config/.env
 
 # uv cache

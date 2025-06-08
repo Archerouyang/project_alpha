@@ -1,10 +1,10 @@
 # scripts/convert_report_cli.py
 import argparse
+import json
 import os
 import sys
-import json
 
-# Add the project root to the Python path to allow importing from 'backend'
+# Add the project root to the Python path to allow imports from 'backend'
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -14,60 +14,64 @@ from backend.core.report_converter import ReportConverter
 
 def main():
     """
-    Command-line interface to convert a markdown file and a chart image
-    into a single final report image.
+    Command-line interface for converting a markdown report and a chart image into a single image.
     """
-    parser = argparse.ArgumentParser(description="Convert analysis into a polished report image.")
+    parser = argparse.ArgumentParser(description="Generate a report image from markdown, a chart, and metadata.")
     parser.add_argument("--markdown-file", required=True, help="Path to the input markdown file.")
-    parser.add_argument("--chart-file", required=True, help="Path to the chart image.")
+    parser.add_argument("--chart-file", required=True, help="Path to the chart image file.")
     parser.add_argument("--output-file", required=True, help="Path to save the final report image.")
-    parser.add_argument("--ticker", required=True, help="Ticker symbol for the report header.")
-    parser.add_argument("--interval", required=True, help="Interval for the report header.")
-    parser.add_argument("--key-data-json", required=True, help="JSON string of key data for the dashboard.")
-    parser.add_argument("--author", help="Author signature for the footer.")
-    parser.add_argument("--avatar-path", help="Path to the author's avatar image.")
-    parser.add_argument("--width", type=int, default=800, help="Width of the report image.")
+    parser.add_argument("--ticker", required=True, help="Stock ticker symbol.")
+    parser.add_argument("--interval", required=True, help="Data interval (e.g., '1d').")
+    parser.add_argument("--key-data-json", required=True, help="JSON string of key financial data.")
+    parser.add_argument("--author", required=False, default="AI Analyst", help="Author of the report.")
+    parser.add_argument("--avatar-path", required=False, help="Path to the author's avatar image.")
+    
     args = parser.parse_args()
 
-    print("CLI (Report): Starting report conversion...")
+    print("--- Starting Report Conversion CLI Script ---")
+    
+    if not os.path.exists(args.markdown_file):
+        print(f"Error: Markdown file not found at {args.markdown_file}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.exists(args.chart_file):
+        print(f"Error: Chart file not found at {args.chart_file}", file=sys.stderr)
+        sys.exit(1)
 
-    # 1. Read markdown content
     try:
-        with open(args.markdown_file, 'r', encoding='utf-8') as f:
+        with open(args.markdown_file, "r", encoding="utf-8") as f:
             markdown_text = f.read()
-        print(f"CLI (Report): Successfully read markdown file: {args.markdown_file}")
-    except FileNotFoundError:
-        print(f"CLI (Report): Error - Markdown file not found at {args.markdown_file}", file=sys.stderr)
-        sys.exit(1)
     except Exception as e:
-        print(f"CLI (Report): Error reading markdown file: {e}", file=sys.stderr)
+        print(f"Error reading markdown file: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 2. Parse key data
     try:
         key_data = json.loads(args.key_data_json)
     except json.JSONDecodeError as e:
-        print(f"CLI Error: Failed to parse key_data_json: {e}", file=sys.stderr)
+        print(f"Error decoding key_data JSON: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 3. Convert to image
-    try:
-        converter = ReportConverter(width=args.width)
-        success = converter.markdown_to_image(
-            markdown_text=markdown_text,
-            chart_image_path=args.chart_file,
-            output_image_path=args.output_file,
-            ticker=args.ticker,
-            interval=args.interval,
-            key_data=key_data,
-            author=args.author,
-            avatar_path=args.avatar_path
-        )
-        if not success:
-            raise RuntimeError("The conversion method returned False.")
-        print(f"CLI (Report): Conversion process completed successfully.")
-    except Exception as e:
-        print(f"CLI (Report): An error occurred during report conversion: {e}", file=sys.stderr)
+    print(f"Successfully parsed arguments.")
+    print(f"Ticker: {args.ticker}, Interval: {args.interval}")
+    print(f"Outputting final report to: {args.output_file}")
+
+    converter = ReportConverter()
+    
+    success = converter.markdown_to_image(
+        markdown_text=markdown_text,
+        chart_image_path=args.chart_file,
+        output_image_path=args.output_file,
+        ticker=args.ticker,
+        interval=args.interval,
+        key_data=key_data,
+        author=args.author,
+        avatar_path=args.avatar_path
+    )
+
+    if success:
+        print(f"--- Report Conversion CLI Script Finished Successfully ---")
+        sys.exit(0)
+    else:
+        print(f"--- Report Conversion CLI Script Failed ---")
         sys.exit(1)
 
 if __name__ == "__main__":
