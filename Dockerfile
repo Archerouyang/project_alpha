@@ -35,6 +35,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 \
     libxshmfence1 \
     libatspi2.0-0 \
+    # --- ADD FONTS ---
+    # Install fonts required for headless browser rendering.
+    fonts-liberation \
+    fonts-wqy-zenhei \
     # Clean up apt cache to reduce image size
     && rm -rf /var/lib/apt/lists/*
 
