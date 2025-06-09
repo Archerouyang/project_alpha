@@ -122,4 +122,4 @@ generated_reports/
 config/.env
 
 # uv cache
-.uv_cache/ 
+.uv_cache/
