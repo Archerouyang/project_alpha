@@ -2,7 +2,8 @@
 import base64
 import markdown2
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from playwright.sync_api import sync_playwright
 from typing import Optional, Dict, Any
 
@@ -62,8 +63,8 @@ class ReportConverter:
             """
 
         disclaimer_text = "本分析内容仅为技术分析参考，非财务建议，仅供参考。投资有风险，入市需谨慎。请根据自身风险承受能力做出投资决策。"
-        # 调整为中国时区时间 (UTC+8)
-        generation_time = (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+        # 使用 Asia/Shanghai 时区
+        generation_time = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
 
         html_template = f"""
         <!DOCTYPE html>
