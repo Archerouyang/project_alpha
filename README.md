@@ -88,6 +88,49 @@ A brief overview of the key directories:
 
 5.  **Access the Service**: Open your browser and navigate to `http://127.0.0.1:8000`.
 
+## Docker Deployment
+
+### Build and Push Docker Image 📦
+
+1. Ensure Docker is installed locally and you are logged in to Docker Hub.
+2. Build the image:
+   ```bash
+   docker build -t archerouyang/project-alpha:latest .
+   ```
+3. Push to Docker Hub:
+   ```bash
+   docker push archerouyang/project-alpha:latest
+   ```
+
+### Deploy on Alibaba Cloud ECS ☁️
+
+1. SSH into your ECS instance:
+   ```bash
+   ssh root@<ECS_IP>
+   ```
+2. Pull the image:
+   ```bash
+   docker pull archerouyang/project-alpha:latest
+   ```
+3. Run the container:
+   ```bash
+   docker run -d -p 8000:8000 \
+     --name project-alpha-container \
+     archerouyang/project-alpha:latest
+   ```
+4. Confirm it's running:
+   ```bash
+   docker ps -a
+   ```
+5. Access via `http://<ECS_IP>:8000` or use SSH 隧道：
+   ```bash
+   ssh -L 8000:127.0.0.1:8000 root@<ECS_IP>
+   ```
+   then open `http://localhost:8000`.
+
+🔒 **HTTPS & Custom Domain**  
+After your domain verification, configure Nginx reverse proxy and Let's Encrypt certificate for `https://your-domain.com`.
+
 ---
 
 ## How to Use the Interface
