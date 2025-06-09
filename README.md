@@ -45,7 +45,7 @@ A brief overview of the key directories:
 -   **Backend**: Python 3.11 with FastAPI
 -   **Frontend**: HTML, CSS, JavaScript
 -   **Data Source**: OpenBB SDK
--   **Chart Rendering**: Playwright & TradingView Lightweight Charts
+-   **Chart Rendering**: Playwright & TradingView Lightweight Charts (note: in Docker, use Firefox engine due to Chromium incompatibility causing blank charts)
 -   **AI Analysis**: DeepSeek API
 -   **Dependency Management**: uv
 
@@ -121,4 +121,8 @@ The next major development phase for this project is to create a front-end clien
 -   [ ] **Initialize Mini Program Project**: Create the `/miniprogram` directory and basic file structure.
 -   [ ] **Rebuild UI in WXML/WXSS**: Recreate the chat-based UI using WeChat's native components.
 -   [ ] **Implement Client Logic**: Rewrite frontend logic in JavaScript for WeChat's environment.
--   [ ] **End-to-End Testing**: Configure the API endpoint and test thoroughly within WeChat Developer Tools. 
+-   [ ] **End-to-End Testing**: Configure the API endpoint and test thoroughly within WeChat Developer Tools.
+
+## Known Issues
+
+- Due to a compatibility issue between Chromium (in Linux Docker images) and TradingView Lightweight Charts, charts may render blank when using the default Chromium browser in Docker. To work around this, our Docker configuration installs and uses Firefox for chart rendering via Playwright, which fully resolves the issue. 
