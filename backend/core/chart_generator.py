@@ -166,7 +166,7 @@ class ChartGenerator:
         print(f"Playwright: Launching self-contained browser for {ticker_symbol}...")
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch()
+                browser = p.firefox.launch() # Use Firefox
                 page = browser.new_page()
                 page.on("console", lambda msg: print(f"Browser Console ({msg.type}): {msg.text}"))
                 

@@ -54,10 +54,9 @@ RUN pip install uv
 # Using --system flag to install into the system Python environment
 RUN uv pip install --system --no-cache --prerelease=allow -r requirements.txt
 
-# 6. Install Playwright browsers
-# This command reads the browser versions from the installed playwright package
-# and downloads the corresponding browser binaries.
-RUN playwright install --with-deps
+# 6. Install Playwright browsers and their dependencies
+# We are specifying 'firefox' to see if a different browser engine avoids the rendering bug.
+RUN playwright install firefox chromium --with-deps
 
 # 7. Copy the rest of the application code into the container
 COPY . .
