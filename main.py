@@ -5,8 +5,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from dotenv import load_dotenv
+from backend.core.orchestrator import AnalysisOrchestrator
+from backend.db.reports import get_reports
 
 # Load environment variables from .env file.
 # This should be at the top to ensure they are loaded for all modules.
@@ -14,7 +16,6 @@ load_dotenv()
 
 # With main.py at the root, we no longer need to manipulate sys.path.
 # Python and Uvicorn will handle it correctly.
-from backend.core.orchestrator import AnalysisOrchestrator
 
 app = FastAPI()
 
@@ -35,6 +36,20 @@ class InstructionValidationResponse(BaseModel):
     status: str  # "valid", "corrected", "clarification_needed"
     command: Optional[str] = None
     explanation: Optional[str] = None
+
+class ReportMetadata(BaseModel):
+    id: int
+    user_id: Optional[str]
+    symbol: str
+    interval: str
+    filepath: str
+    generated_at: str
+    latest_close: Optional[float]
+    bollinger_upper: Optional[float]
+    bollinger_middle: Optional[float]
+    bollinger_lower: Optional[float]
+    stoch_rsi_k: Optional[float]
+    stoch_rsi_d: Optional[float]
 
 # --- Static Files & Frontend Serving ---
 # Paths are now relative to the project root where main.py is located.
@@ -91,6 +106,14 @@ async def analyze(request: AnalysisRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An internal server error occurred: {str(e)}")
+
+@app.get("/api/analysis/history", response_model=List[ReportMetadata])
+async def get_history(user_id: Optional[str] = None, date: Optional[str] = None):
+    """
+    列出历史报告。可根据 user_id 和日期(YYYY-MM-DD) 过滤。
+    """
+    records = get_reports(user_id, date)
+    return records
 
 # To run this app (from the project_alpha directory):
 # Ensure .venv is activated: source .venv/bin/activate (or .venv\Scripts\activate on Windows)

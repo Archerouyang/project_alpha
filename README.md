@@ -133,6 +133,24 @@ After your domain verification, configure Nginx reverse proxy and Let's Encrypt 
 
 ---
 
+## Data Management
+
+- Initialize the reports database:
+  ```bash
+  python backend/db/init_reports_db.py
+  ```
+- View historical reports via HTTP API:
+  ```bash
+  curl http://<HOST>/api/analysis/history?user_id=<USER_ID>&date=YYYY-MM-DD
+  ```
+- Clean up expired reports (default keep 7 days):
+  ```bash
+  python scripts/cleanup_reports.py [days_to_keep]
+  ```
+- SQLite database file: `backend/db/reports.db`
+
+---
+
 ## How to Use the Interface
 
 Enter your request in the input box using the following format:

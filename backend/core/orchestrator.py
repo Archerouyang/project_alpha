@@ -13,9 +13,13 @@ import pandas as pd
 from backend.core.chart_generator import ChartGenerator
 from backend.core.llm_analyzer import LLMAnalyzer
 from .data_fetcher import get_ohlcv_data
+from backend.db.reports import init_db, insert_report
+from zoneinfo import ZoneInfo
 
 class AnalysisOrchestrator:
     def __init__(self, output_dir: str = "generated_reports"):
+        # 初始化报告数据库
+        init_db()
         self.output_dir = output_dir
         self.llm_analyzer = LLMAnalyzer()
         self.chart_generator = ChartGenerator()
@@ -24,9 +28,14 @@ class AnalysisOrchestrator:
 
     def _create_report_paths(self, ticker: str, interval: str) -> Tuple[str, str, str, str, str]:
         """Creates and returns paths for the report directory and its contents."""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 按日期分目录存储
+        date_str = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+        date_dir = os.path.join(self.output_dir, date_str)
+        os.makedirs(date_dir, exist_ok=True)
+        # 使用北京时间戳作为目录名一部分
+        timestamp = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d_%H%M%S")
         report_dir_name = f"report_{ticker}_{interval}_{timestamp}"
-        report_dir = os.path.join(self.output_dir, report_dir_name)
+        report_dir = os.path.join(date_dir, report_dir_name)
         os.makedirs(report_dir, exist_ok=True)
         print(f"Orchestrator: Created output directory: {report_dir}")
 
@@ -183,6 +192,22 @@ class AnalysisOrchestrator:
             print(f"Orchestrator: Cleaned up temporary file {temp_data_path}")
         except OSError as e:
             print(f"Orchestrator: Error cleaning up temporary file: {e}")
+
+        # 插入报告索引
+        generated_at = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
+        insert_report(
+            None,
+            ticker,
+            interval,
+            final_report_path,
+            generated_at,
+            key_data.get("latest_close"),
+            key_data.get("bollinger_upper"),
+            key_data.get("bollinger_middle"),
+            key_data.get("bollinger_lower"),
+            key_data.get("stoch_rsi_k"),
+            key_data.get("stoch_rsi_d")
+        )
 
         end_time = time.monotonic()
 

@@ -123,3 +123,6 @@ config/.env
 
 # uv cache
 .uv_cache/
+
+# Ignore reports database
+backend/db/reports.db
