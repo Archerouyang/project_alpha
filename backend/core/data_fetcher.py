@@ -49,8 +49,6 @@ def map_interval_to_openbb(interval_str: str) -> str:
     if interval_lower in ["1h", "60m", "60min", "1hour"]: return "1h"
     if interval_lower in ["4h", "240m", "4hour"]: return "4h"
     if interval_lower in ["1d", "1day", "daily"]: return "1d"
-    if interval_lower in ["1w", "1wk", "1week", "weekly"]: return "1w"
-    if interval_lower in ["1mo", "1month", "monthly"]: return "1mo"
     return interval_str
 
 def _standardize_df_columns(df: pd.DataFrame) -> pd.DataFrame:

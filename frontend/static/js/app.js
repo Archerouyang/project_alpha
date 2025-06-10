@@ -8,13 +8,14 @@ document.addEventListener('DOMContentLoaded', () => {
         <br>
         使用说明：<br>
         1. 必填：资产代码（如 <code>AAPL</code>、<code>BTC-USD</code>）<br>
-        2. 可选：时间间隔（如 <code>5min</code>、<code>1h</code>、<code>1d</code>、<code>1w</code>、<code>1m</code>）<br>
+        2. 可选：时间间隔（如 <code>5min</code>、<code>15min</code>、<code>30min</code>、<code>1h</code>、<code>1d</code>）<br>
         3. 可选：交易所（仅加密货币，如 <code>BTC-USD KRAKEN</code>）<br>
         <br>
         示例：<br>
-        <code>AAPL 1mo</code><br>
         <code>AAPL 5min</code><br>
         <code>TSLA 1h</code><br>
+        <code>MSFT 30min</code><br>
+        <code>GOOG 1d</code><br>
         <code>BTC-USD KRAKEN</code><br>
         <br>
         我随时待命哦！(｡･ω･｡)ﾉ`;
@@ -191,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
      * @returns {boolean}
      */
     function isInterval(s) {
-        // 支持格式：5min, 5m, 15min, 30min, 1h, 1d, 1w, 1m, 1mo(月度)
-        return /^\d+(?:min|mo|m|h|d|w)$/i.test(s);
+        // 支持格式：5min, 5m, 15min, 30min, 1h, 1d
+        return /^\d+(?:min|m|h|d)$/i.test(s);
     }
 }); 
