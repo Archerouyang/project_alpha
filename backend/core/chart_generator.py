@@ -136,9 +136,15 @@ class ChartGenerator:
             "stoch_rsi_d": latest_row.get('stochd_14_3_3'),
         }
         
-        # Round all values to 2-4 decimal places for cleaner output, handling None
+        # 标准化 key_data：布林带保留两位小数，RSI 取整数，其他保留四位小数
         for key, value in key_data.items():
-            if value is not None and isinstance(value, (int, float)):
+            if value is None or not isinstance(value, (int, float)):
+                continue
+            if key in ('bollinger_upper', 'bollinger_middle', 'bollinger_lower'):
+                key_data[key] = round(value, 2)
+            elif key in ('stoch_rsi_k', 'stoch_rsi_d'):
+                key_data[key] = int(round(value))
+            else:
                 key_data[key] = round(value, 4)
 
         print(f"Extracted Key Data: {key_data}")

@@ -91,6 +91,9 @@ def get_ohlcv_data(
     Fetches OHLCV data for a given ticker, intelligently handling crypto vs. equity.
     """
     print(f"Fetching data for '{ticker}' on exchange '{exchange or 'default'}' aiming for {num_candles} candles, interval '{interval}'...")
+    # 将用户输入的 interval 转换为 OpenBB 所需的标准值
+    mapped_interval = map_interval_to_openbb(interval)
+    print(f"Mapped interval '{interval}' to OpenBB interval '{mapped_interval}'")
 
     fmp_api_key = os.getenv("FMP_API_KEY")
     if not fmp_api_key:
@@ -108,22 +111,22 @@ def get_ohlcv_data(
     
     try:
         if is_crypto:
-            print(f"-> Detected as CRYPTO. Using obb.crypto.price.historical...")
+            print(f"-> Detected as CRYPTO. Using obb.crypto.price.historical with interval '{mapped_interval}'...")
             # For crypto, the exchange is a direct parameter.
             data = obb.crypto.price.historical(
                 symbol=ticker,
                 start_date=start_date,
-                interval=interval,
+                interval=mapped_interval,
                 exchange=exchange, # Pass the exchange here
                 provider="fmp"
             )
         else:
-            print(f"-> Detected as EQUITY. Using obb.equity.price.historical...")
+            print(f"-> Detected as EQUITY. Using obb.equity.price.historical with interval '{mapped_interval}'...")
             # For equity, FMP is the provider and doesn't need an 'exchange' parameter.
             data = obb.equity.price.historical(
                 symbol=ticker,
                 start_date=start_date,
-                interval=interval,
+                interval=mapped_interval,
                 provider="fmp"
             )
         
