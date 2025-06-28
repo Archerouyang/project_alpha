@@ -1,0 +1,96 @@
+# config/cache_config.yaml
+# 智能缓存系统配置文件
+
+cache:
+  # 是否启用缓存
+  enabled: true
+  
+  # 磁盘缓存存储路径
+  storage_path: "./cache_data"
+  
+  # TTL配置（秒）
+  data_ttl: 300      # 5分钟 - 股票数据，平衡实时性和性能
+  chart_ttl: 600     # 10分钟 - 图表生成，相同数据图表不变  
+  analysis_ttl: 1800 # 30分钟 - AI分析，最耗时，缓存最久
+  
+  # 存储限制
+  max_memory_entries: 1000  # 内存中最大缓存条目数
+  max_disk_size_mb: 500     # 磁盘缓存最大大小(MB)
+  
+  # 清理策略
+  cleanup_interval: 3600    # 1小时清理一次过期缓存
+  
+  # LRU策略配置
+  lru_eviction_batch: 100   # 每次LRU清理的条目数量
+
+# 性能监控配置
+performance:
+  # 是否启用性能监控
+  enable_monitoring: true
+  
+  # 是否记录缓存操作日志
+  log_cache_operations: true
+  
+  # 是否追踪响应时间
+  track_response_times: true
+  
+  # 性能报告生成间隔（秒）
+  report_interval: 3600
+  
+  # 性能数据保留时间（天）
+  data_retention_days: 30
+
+# 缓存预热配置
+preload:
+  # 是否启用预热
+  enabled: false
+  
+  # 预热的热门股票列表
+  popular_symbols:
+    - "AAPL"
+    - "MSFT" 
+    - "GOOGL"
+    - "TSLA"
+    - "NVDA"
+  
+  # 预热的时间间隔
+  popular_intervals:
+    - "1d"
+    - "1h"
+  
+  # 预热时间（启动后延迟，秒）
+  startup_delay: 300
+
+# 高级配置
+advanced:
+  # 并发控制
+  max_concurrent_disk_operations: 10
+  
+  # 缓存键最大长度
+  max_key_length: 250
+  
+  # 压缩配置
+  enable_compression: true
+  compression_level: 6
+  
+  # 错误处理
+  retry_attempts: 3
+  retry_delay: 1.0
+  
+  # 健康检查
+  health_check_interval: 600  # 10分钟
+
+# 开发调试配置
+debug:
+  # 详细日志
+  verbose_logging: false
+  
+  # 缓存命中率统计
+  track_hit_ratios: true
+  
+  # 性能分析
+  enable_profiling: false
+  
+  # 模拟延迟测试
+  simulate_delays: false
+  test_delay_ms: 100 
