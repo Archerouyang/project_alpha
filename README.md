@@ -5,353 +5,188 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688.svg)](https://fastapi.tiangolo.com/)
 [![Cache](https://img.shields.io/badge/Cache-Smart%20Optimized-orange.svg)](https://github.com/Archerouyang/project_alpha)
 
-This project provides a sophisticated financial analysis service, accessible via a clean, web-based chat interface. It allows users to get AI-powered technical analysis reports for stocks and cryptocurrencies, which are presented in a polished, professional, and easy-to-read image format.
+一个基于AI的金融技术分析服务，通过Web界面提供股票和加密货币的专业技术分析报告。
 
-The system's backend fetches market data, generates detailed candlestick charts, uses a Large Language Model (LLM) for in-depth analysis, and composites the chart and text into a final, beautifully designed report image.
+## ✨ 主要特性
 
-**🚀 NEW: Smart Caching System**: Revolutionary multi-layer caching reduces response time from 26s to 1-3s (88% improvement) for repeated requests. Features intelligent TTL policies, LRU memory management, and comprehensive performance monitoring.
+- **🚀 智能缓存系统**: 多层缓存架构，响应时间从26s优化到1-3s（88%性能提升）
+- **📊 专业报告生成**: 自动生成包含K线图、技术指标和AI分析的精美报告
+- **🌐 简洁Web界面**: 类似聊天的直观操作界面
+- **💹 广泛市场支持**: 支持股票（AAPL）和加密货币（BTC-USD）
+- **🧠 AI分析**: 基于DeepSeek API的深度技术分析
+- **⚡ 高性能优化**: 智能TTL策略、LRU内存管理、性能监控
 
-**✅ Recently Fixed**: Data fetching compatibility issues and chart generation problems have been resolved. The system now includes robust fallback mechanisms for reliable operation.
+## 📋 系统架构
 
----
+系统采用模块化设计，各组件协同工作提供高效的分析服务：
 
-## Current Features
-
--   **🚀 Smart Caching System**: Revolutionary multi-layer intelligent caching dramatically improves performance:
-    -   **Dual-layer Architecture**: Memory cache + disk cache for optimal speed and persistence
-    -   **Intelligent TTL Policies**: Data (5min), Charts (10min), AI Analysis (30min)
-    -   **Performance Gains**: 88% response time reduction (26s → 1-3s for cached requests)
-    -   **LRU Memory Management**: Automatic cleanup with configurable limits
-    -   **Thread-Safe Design**: Concurrent request handling with data consistency
-
--   **Polished Report Generation**: Creates visually stunning report images based on a professional, modern template. Key design features include:
-    -   A clean, card-based layout with a distinct header and footer.
-    -   A "Key Data Dashboard" for at-a-glance metrics (e.g., close price, period high/low, indicator values).
-    -   A sophisticated blue-gray and teal color scheme.
-    -   Customizable author attribution with an avatar in the report footer.
-
--   **Intuitive Web UI**: A simple, chat-like interface to request and display analysis reports, running on FastAPI and Uvicorn.
-
--   **Broad Market Support**: Intelligently fetches data for both stock tickers (e.g., `AAPL`) and cryptocurrency pairs (e.g., `BTC-USD`).
-
--   **Exchange-Specific Data**: Allows specifying a cryptocurrency exchange (e.g., `KRAKEN`, `BINANCE`) for precise data sourcing.
-
--   **Flexible Time Intervals**: Supports various timeframes like `1h`, `4h`, `1d` (default), `1w`.
-
--   **AI-Powered Analysis**: Leverages the DeepSeek API to generate a narrative analysis based on the chart and key data points.
-
--   **Robust Architecture**: A decoupled architecture where resource-intensive Playwright operations (charting, report rendering) are executed in isolated CLI scripts, avoiding common `asyncio` event loop conflicts with web servers like Uvicorn.
-
----
-
-## Project Structure
-
-A brief overview of the key directories:
-
--   `backend/`: Contains the core application logic, including the FastAPI server, data fetching, analysis orchestration, and report generation.
--   `frontend/`: The static files (HTML, CSS, JS) for the web-based user interface.
--   `scripts/`: Holds standalone command-line scripts used by the orchestrator for heavy-lifting tasks like charting.
--   `assets/`: Stores static image assets, such as author avatars, used in report generation.
--   `generated_reports/`: The default output directory for the final report images.
-
----
-
-## Technology Stack
-
--   **Backend**: Python 3.11 with FastAPI
--   **Frontend**: HTML, CSS, JavaScript
--   **Smart Caching**: Multi-layer cache system with TTL policies and LRU eviction
--   **Performance Monitoring**: Real-time tracking with detailed analytics
--   **Data Source**: OpenBB SDK with FMP API provider + Direct FMP API fallback
--   **Chart Rendering**: Playwright & TradingView Lightweight Charts (Windows: Chromium, Docker: Firefox)
--   **AI Analysis**: DeepSeek API
--   **Dependency Management**: uv
-
----
-
-## Quick Start
-
-For a rapid setup, follow these essential steps:
-
-1. **Clone & Setup Environment**:
-   ```bash
-   git clone <your-repository-url>
-   cd project_alpha
-   uv venv && .venv\Scripts\activate
-   uv pip install -r requirements.txt --prerelease=allow
-   ```
-
-2. **Configure API Keys** - Create `.env` file:
-   ```env
-   DEEPSEEK_API_KEY="your_deepseek_api_key"
-   FMP_API_KEY="your_fmp_api_key"
-   ```
-
-3. **Install Browser & Start**:
-   ```bash
-   playwright install chromium
-   uvicorn main:app --reload
-   ```
-
-4. **Test**: Open `http://127.0.0.1:8000` and try `NVDA` or `BTC-USD`
-
----
-
-## 🚀 Performance Optimization
-
-### Smart Caching System
-
-Our revolutionary multi-layer caching system delivers unprecedented performance improvements:
-
-| Component | First Request | Cached Request | Improvement |
-|-----------|---------------|----------------|-------------|
-| **Data Fetch** | 1.5s | 0.1s | **93%** |
-| **Chart Generation** | 20s | 0.5s | **97%** |
-| **AI Analysis** | 3s | 0.1s | **97%** |
-| **Total Response** | **26s** | **1-3s** | **88%** |
-
-### Cache Management API
-
-Monitor and control the caching system via API endpoints:
-
-```bash
-# Get cache statistics
-GET /api/cache/stats
-
-# Clear expired cache entries
-POST /api/cache/clear
-
-# Clear all cache (development)
-DELETE /api/cache/all
-
-# Performance monitoring
-GET /api/performance/stats
-GET /api/performance/report
-
-# System health check
-GET /api/health
+```mermaid
+graph TD
+    A[Web UI<br/>Frontend] -->|HTTP Request| B[FastAPI<br/>Main Server]
+    B --> C[Analysis Orchestrator<br/>Workflow Controller]
+    
+    C --> D[Smart Cache<br/>Multi-layer Storage]
+    D -->|Cache Hit| E[Performance Monitor<br/>Analytics & Stats]
+    D -->|Cache Miss| F[Data Fetcher<br/>Market Data API]
+    
+    F -->|FMP/OpenBB| G[Financial Data<br/>OHLCV & Indicators]
+    G --> C
+    
+    C --> H[Chart Generator<br/>Playwright + TradingView]
+    H --> I[Technical Chart<br/>PNG Image]
+    
+    C --> J[LLM Analyzer<br/>DeepSeek AI]
+    J --> K[AI Analysis<br/>Text Report]
+    
+    C --> L[Report Converter<br/>Final Composition]
+    I --> L
+    K --> L
+    L --> M[Final Report<br/>Professional PNG]
+    
+    M --> B
+    B --> A
+    
+    E --> N[API Endpoints<br/>/api/cache/stats<br/>/api/performance/*<br/>/api/health]
+    
+    subgraph "Storage Layer"
+        D1[Memory Cache<br/>LRU + TTL]
+        D2[Disk Cache<br/>Persistent Storage]
+        D --> D1
+        D --> D2
+    end
+    
+    subgraph "External APIs"
+        F1[Financial Modeling Prep]
+        F2[OpenBB SDK]
+        J1[DeepSeek API]
+        F --> F1
+        F --> F2
+        J --> J1
+    end
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#e8f5e8
+    style E fill:#fce4ec
+    style M fill:#fff9c4
 ```
 
-### Performance Testing
+**核心组件说明：**
+- **Analysis Orchestrator**: 工作流控制器，协调各个模块
+- **Smart Cache**: 双层缓存（内存+磁盘），智能TTL策略
+- **Data Fetcher**: 市场数据获取，支持多数据源fallback
+- **Chart Generator**: 使用Playwright + TradingView生成技术图表
+- **LLM Analyzer**: DeepSeek AI技术分析
+- **Report Converter**: 最终报告合成器
 
-Run comprehensive cache performance tests:
+## 🚀 快速启动
 
+### 1. 环境准备
 ```bash
-# Execute performance tests
+# 克隆项目
+git clone <your-repository-url>
+cd project_alpha
+
+# 创建虚拟环境
+uv venv && .venv\Scripts\activate  # Windows
+# source .venv/bin/activate        # macOS/Linux
+
+# 安装依赖
+uv pip install -r requirements.txt --prerelease=allow
+```
+
+### 2. 配置API密钥
+创建 `.env` 文件：
+```env
+DEEPSEEK_API_KEY="your_deepseek_api_key"
+FMP_API_KEY="your_fmp_api_key"
+```
+
+**获取API密钥：**
+- [DeepSeek API](https://platform.deepseek.com/) - AI分析
+- [Financial Modeling Prep](https://financialmodelingprep.com/developer/docs) - 市场数据
+
+### 3. 安装浏览器 & 启动
+```bash
+# 安装Playwright浏览器（图表生成必需）
+playwright install chromium
+
+# 启动服务
+uvicorn main:app --reload
+```
+
+### 4. 访问服务
+打开浏览器访问 `http://127.0.0.1:8000`
+
+## 💡 使用说明
+
+在输入框中输入分析请求：
+
+**格式**: `[TICKER] [EXCHANGE?] [INTERVAL?]`
+
+**示例**:
+- `AAPL` - 苹果股票日线分析
+- `TSLA 4h` - 特斯拉4小时线分析  
+- `BTC-USD KRAKEN 1h` - 比特币1小时线分析
+
+## 📊 性能监控
+
+智能缓存系统提供显著的性能提升：
+
+| 组件 | 首次请求 | 缓存命中 | 提升幅度 |
+|------|----------|----------|----------|
+| 数据获取 | 1.5s | 0.1s | 93% |
+| 图表生成 | 20s | 0.5s | 97% |
+| AI分析 | 3s | 0.1s | 97% |
+| **总响应** | **26s** | **1-3s** | **88%** |
+
+### 缓存管理API
+```bash
+GET  /api/cache/stats      # 缓存统计
+POST /api/cache/clear      # 清理过期缓存
+GET  /api/performance/stats # 性能统计
+GET  /api/health           # 系统健康检查
+```
+
+## 🔧 故障排除
+
+**常见问题：**
+
+- **OpenBB导入错误**: 系统会自动fallback到FMP API
+- **Playwright浏览器缺失**: 运行 `playwright install chromium`
+- **API密钥错误**: 检查 `.env` 文件配置
+- **缓存问题**: 访问 `/api/cache/clear` 清理缓存
+
+**性能测试：**
+```bash
 python tests/test_cache_performance.py
-
-# Results show dramatic improvements:
-# ✅ Average performance improvement: 85%+
-# ⚡ Average speedup factor: 10x+
-# 🎯 Cache hit rates: 80-95%
 ```
 
-### Cache Configuration
+## 📁 项目结构
 
-Customize caching behavior in `config/cache_config.yaml`:
-
-```yaml
-cache:
-  enabled: true
-  data_ttl: 300      # 5 minutes - market data
-  chart_ttl: 600     # 10 minutes - chart images  
-  analysis_ttl: 1800 # 30 minutes - AI analysis
-  max_memory_entries: 1000
-  max_disk_size_mb: 500
+```
+project_alpha/
+├── backend/           # 核心业务逻辑
+│   ├── core/         # 智能缓存、性能监控、数据处理
+│   ├── db/           # 数据库管理
+│   └── models/       # 数据模型
+├── frontend/         # Web界面
+├── scripts/          # CLI工具脚本
+├── config/           # 配置文件
+└── tests/            # 测试脚本
 ```
 
----
+## 🛠️ 技术栈
 
-## Detailed Setup and Run
-
-1.  **Clone the Repository**
-    ```bash
-    git clone <your-repository-url>
-    cd project_alpha
-    ```
-
-2.  **Create Virtual Environment and Install Dependencies**: This project uses `uv` for package management.
-    ```bash
-    # Create a virtual environment
-    uv venv
-    
-    # Activate the environment
-    # On Windows
-    .venv\Scripts\activate
-    # On macOS/Linux
-    source .venv/bin/activate
-
-    # Install dependencies
-    uv pip install -r requirements.txt --prerelease=allow
-    ```
-
-3.  **Set Up API Keys**: Create a `.env` file in the project root with your API keys.
-    ```env
-    # .env - API Configuration
-    DEEPSEEK_API_KEY="your_deepseek_api_key_here"
-    FMP_API_KEY="your_financial_modeling_prep_api_key_here"
-    
-    # Optional configuration
-    DEBUG=false
-    APP_NAME="Project Alpha AI Technical Analysis Service"
-    TRADINGVIEW_CHART_WIDTH=1200
-    TRADINGVIEW_CHART_HEIGHT=800
-    ```
-    
-    **Getting API Keys:**
-    - **DeepSeek API**: Sign up at [DeepSeek](https://platform.deepseek.com/) for AI analysis
-    - **FMP API**: Get a free key at [Financial Modeling Prep](https://financialmodelingprep.com/developer/docs) for market data
-
-4.  **Install Playwright Browsers**: Required for chart generation.
-    ```bash
-    # Install Playwright browsers (required for chart rendering)
-    playwright install chromium
-    
-    # Alternatively, install all browsers
-    playwright install
-    ```
-
-5.  **Run the Web Server**:
-    ```bash
-    uvicorn main:app --reload
-    ```
-
-6.  **Access the Service**: Open your browser and navigate to `http://127.0.0.1:8000`.
-
-## Docker Deployment
-
-### Build and Push Docker Image 📦
-
-1. Ensure Docker is installed locally and you are logged in to Docker Hub.
-2. Build the image:
-   ```bash
-   docker build -t archerouyang/project-alpha:latest .
-   ```
-3. Push to Docker Hub:
-   ```bash
-   docker push archerouyang/project-alpha:latest
-   ```
-
-### Deploy on Alibaba Cloud ECS ☁️
-
-1. SSH into your ECS instance:
-   ```bash
-   ssh root@<ECS_IP>
-   ```
-2. Pull the image:
-   ```bash
-   docker pull archerouyang/project-alpha:latest
-   ```
-3. Run the container:
-   ```bash
-   docker run -d -p 8000:8000 \
-     --name project-alpha-container \
-     archerouyang/project-alpha:latest
-   ```
-4. Confirm it's running:
-   ```bash
-   docker ps -a
-   ```
-5. Access via `http://<ECS_IP>:8000` or use SSH 隧道：
-   ```bash
-   ssh -L 8000:127.0.0.1:8000 root@<ECS_IP>
-   ```
-   then open `http://localhost:8000`.
-
-🔒 **HTTPS & Custom Domain**  
-After your domain verification, configure Nginx reverse proxy and Let's Encrypt certificate for `https://your-domain.com`.
+- **Backend**: Python 3.11 + FastAPI
+- **Frontend**: HTML/CSS/JavaScript
+- **Caching**: 智能多层缓存系统
+- **Data**: OpenBB SDK + FMP API
+- **Charts**: Playwright + TradingView Lightweight Charts
+- **AI**: DeepSeek API
+- **Package Management**: uv
 
 ---
 
-## Data Management
-
-- Initialize the reports database:
-  ```bash
-  python backend/db/init_reports_db.py
-  ```
-- View historical reports via HTTP API:
-  ```bash
-  curl http://<HOST>/api/analysis/history?user_id=<USER_ID>&date=YYYY-MM-DD
-  ```
-- Clean up expired reports (default keep 7 days):
-  ```bash
-  python scripts/cleanup_reports.py [days_to_keep]
-  ```
-- SQLite database file: `backend/db/reports.db`
-
----
-
-## How to Use the Interface
-
-Enter your request in the input box using the following format:
-
-**`[TICKER] [EXCHANGE?(Optional)] [INTERVAL?(Optional)]`**
-
--   **TICKER**: The stock symbol or crypto pair (e.g., `AAPL`, `BTC-USD`).
--   **EXCHANGE**: (Optional) The crypto exchange (e.g., `KRAKEN`, `BINANCE`). Omit for stocks.
--   **INTERVAL**: (Optional) The time interval (e.g., `1h`, `4h`, `1d`, `1w`). Defaults to `1d`.
-
-**Examples:**
-- `TSLA 4h`
-- `BTC-USD KRAKEN 1h`
-- `NVDA`
-
----
-
-## Future Roadmap: WeChat Mini Program
-
-The next major development phase for this project is to create a front-end client as a WeChat Mini Program, allowing users to access the service directly on their mobile devices.
-
-### Planned Architecture
-
--   **Backend (Cloud API Service)**: The existing FastAPI application will be deployed to a public cloud server (e.g., AWS, Azure, Heroku) to provide a stable, public HTTPS API endpoint.
--   **Frontend (WeChat Mini Program)**: A new frontend will be built using WeChat's native technologies (WXML, WXSS, and JavaScript) to create a user experience optimized for mobile. It will communicate with the deployed backend via `wx.request()` API calls.
-
-### Development Steps
--   [ ] **Deploy Backend to Cloud**: Package and deploy the FastAPI app.
--   [ ] **Initialize Mini Program Project**: Create the `/miniprogram` directory and basic file structure.
--   [ ] **Rebuild UI in WXML/WXSS**: Recreate the chat-based UI using WeChat's native components.
--   [ ] **Implement Client Logic**: Rewrite frontend logic in JavaScript for WeChat's environment.
--   [ ] **End-to-End Testing**: Configure the API endpoint and test thoroughly within WeChat Developer Tools.
-
-## Troubleshooting
-
-### Data Fetching Issues
-- **OpenBB Import Error**: If you encounter `cannot import name 'OBBject_EquityInfo'` errors, the system will automatically fall back to direct FMP API calls. This is a known compatibility issue with certain OpenBB versions.
-- **FMP API Key**: Ensure your `FMP_API_KEY` is correctly set in the `.env` file. You can get a free API key from [Financial Modeling Prep](https://financialmodelingprep.com/developer/docs).
-
-### Chart Generation Issues
-- **Playwright Browser Missing**: If you see `Executable doesn't exist` errors, run `playwright install chromium` to install the required browser.
-- **PowerShell Execution Policy (Windows)**: If you encounter PowerShell script execution issues, you can:
-  - Use `.bat` files instead of `.ps1` scripts for virtual environment activation
-  - Or set execution policy: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
-
-### API Configuration
-- **DeepSeek API**: Ensure your `DEEPSEEK_API_KEY` is valid for AI analysis functionality.
-- **Environment Variables**: The system automatically loads API keys from the `.env` file. Restart the server after making changes to `.env`.
-
-### Cache and Performance Issues
-- **Cache Not Working**: If cache performance isn't improving response times:
-  - Check cache configuration in `config/cache_config.yaml`
-  - Verify cache directory permissions: `./cache_data`
-  - Monitor cache stats via `/api/cache/stats` endpoint
-  
-- **Memory Usage High**: If experiencing high memory usage:
-  - Reduce `max_memory_entries` in cache config
-  - Clear cache manually: `POST /api/cache/clear`
-  - Check disk cache size: `/api/health` endpoint
-  
-- **Cache Corruption**: If seeing cache-related errors:
-  - Clear all cache: `DELETE /api/cache/all`
-  - Restart the application
-  - Check file system permissions for cache directory
-  
-- **Performance Monitoring**: 
-  - View real-time stats: `GET /api/performance/stats`
-  - Generate detailed report: `GET /api/performance/report`
-  - Run performance tests: `python tests/test_cache_performance.py`
-
-## Known Issues
-
-- **Docker Environment**: Due to compatibility issues between Chromium and TradingView Lightweight Charts in Linux Docker containers, the Docker configuration uses Firefox for chart rendering. In Windows environments, Chromium is used by default.
-- **OpenBB SDK Compatibility**: Some versions of OpenBB SDK may have import conflicts. The system includes automatic fallback to direct FMP API calls to ensure reliability. 
+**License**: MIT | **Author**: Archerouyang 
