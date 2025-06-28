@@ -114,6 +114,8 @@ Thumbs.db
 .env
 # Ignore generated report images and data
 generated_reports/
+# Ignore cache data (temporary files that should not be versioned)
+cache_data/
 # Ignore log files
 *.log
 
