@@ -50,9 +50,13 @@ COPY requirements.txt .
 # Install uv, a fast Python package installer
 RUN pip install uv
 
-# Install dependencies using uv
+# Install dependencies using uv with PyPI mirror
 # Using --system flag to install into the system Python environment
-RUN uv pip install --system --no-cache --prerelease=allow -r requirements.txt
+# Using Chinese PyPI mirror for faster downloads
+RUN uv pip install --system --no-cache --prerelease=allow \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple/ \
+    --trusted-host pypi.tuna.tsinghua.edu.cn \
+    -r requirements.txt
 
 # 6. Install Playwright browsers and their dependencies
 # We are specifying 'firefox' to see if a different browser engine avoids the rendering bug.
