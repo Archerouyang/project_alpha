@@ -203,22 +203,33 @@ class LLMAnalyzer:
             return cached_analysis
         
         # 缓存未命中，调用AI分析
-        print(f"LLMAnalyzer: Cache MISS for {ticker_symbol}, calling AI...")
-        analysis_text = await self.analyze_chart_image(image_bytes, ticker_symbol, key_financial_data)
-        
-        duration = time.time() - start_time
-        
-        if analysis_text is not None:
-            # AI分析成功，缓存结果
-            cache.set_analysis_cache(ticker_symbol, data_hash, analysis_text)
+        print(f"LLMAnalyzer: Cache MISS for {ticker_symbol}, calling DeepSeek API...")
+        try:
+            analysis_text = await self.analyze_chart_image(image_bytes, ticker_symbol, key_financial_data)
+            
+            duration = time.time() - start_time
+            
+            if analysis_text is not None and len(analysis_text.strip()) > 0:
+                # AI分析成功，缓存结果
+                cache.set_analysis_cache(ticker_symbol, data_hash, analysis_text)
+                monitor.track_operation('llm_analysis', duration, cache_hit=False,
+                                       metadata={'ticker': ticker_symbol, 'data_hash': data_hash[:8], 
+                                               'analysis_length': len(analysis_text)})
+                print(f"LLMAnalyzer: ✅ AI analysis completed and cached for {ticker_symbol}, took {duration:.3f}s, {len(analysis_text)} chars")
+                return analysis_text
+            else:
+                # AI分析返回空内容
+                monitor.track_operation('llm_analysis', duration, cache_hit=False,
+                                       metadata={'ticker': ticker_symbol, 'data_hash': data_hash[:8], 'success': False, 'reason': 'empty_response'})
+                print(f"LLMAnalyzer: ❌ AI analysis returned empty content for {ticker_symbol}, took {duration:.3f}s")
+                return None
+                
+        except Exception as e:
+            duration = time.time() - start_time
+            # AI分析异常
             monitor.track_operation('llm_analysis', duration, cache_hit=False,
-                                   metadata={'ticker': ticker_symbol, 'data_hash': data_hash[:8], 
-                                           'analysis_length': len(analysis_text)})
-            print(f"LLMAnalyzer: AI analysis completed and cached for {ticker_symbol}, took {duration:.3f}s")
-        else:
-            # AI分析失败
-            monitor.track_operation('llm_analysis', duration, cache_hit=False,
-                                   metadata={'ticker': ticker_symbol, 'data_hash': data_hash[:8], 'success': False})
-            print(f"LLMAnalyzer: AI analysis failed for {ticker_symbol}, took {duration:.3f}s")
-        
-        return analysis_text 
+                                   metadata={'ticker': ticker_symbol, 'data_hash': data_hash[:8], 'success': False, 'error': str(e)})
+            print(f"LLMAnalyzer: ❌ AI analysis exception for {ticker_symbol}: {type(e).__name__}: {e}, took {duration:.3f}s")
+            import traceback
+            traceback.print_exc()
+            return None 

@@ -157,15 +157,29 @@ class AnalysisOrchestrator:
         print(f"✅ Phase 3 completed in {parallel_duration:.2f}s")
 
         chart_success, analysis_text = None, None
-        for result in results:
+        for i, result in enumerate(results):
+            task_name = "Chart Generation" if i == 0 else "AI Analysis"
+            
             if isinstance(result, bool):
                 chart_success = result
+                print(f"📊 {task_name}: {'Success' if result else 'Failed'}")
             elif isinstance(result, str):
                 analysis_text = result
+                print(f"🤖 {task_name}: Success - {len(result)} characters")
             elif isinstance(result, Exception):
-                print(f"❌ Orchestrator: Error in parallel execution: {result}")
+                print(f"❌ Orchestrator: {task_name} failed with error: {type(result).__name__}: {result}")
+                import traceback
+                traceback.print_exc()
                 self.monitor.track_request(False, time.monotonic() - total_start_time)
-                return None, f"Parallel task error: {result}"
+                return None, f"{task_name} error: {result}"
+            elif result is None:
+                print(f"❌ Orchestrator: {task_name} returned None (likely failed)")
+                self.monitor.track_request(False, time.monotonic() - total_start_time)  
+                return None, f"{task_name} returned None"
+            else:
+                print(f"⚠️ Orchestrator: {task_name} returned unexpected result type: {type(result)}")
+                print(f"   Result content: {result}")
+                # 尝试继续处理，可能是我们未预期的有效结果
         
         if not chart_success or not os.path.exists(chart_path):
             print(f"❌ Orchestrator: Chart generation failed for {ticker}.")
@@ -264,6 +278,8 @@ class AnalysisOrchestrator:
     async def _generate_chart_cached(self, ohlcv_df: pd.DataFrame, ticker: str, interval: str, chart_path: str) -> bool:
         """使用缓存版本生成图表的辅助方法"""
         try:
+            print(f"📊 Chart Generation: Starting for {ticker} {interval}")
+            
             # 在线程池中执行同步的Playwright调用
             import asyncio
             loop = asyncio.get_event_loop()
@@ -272,13 +288,20 @@ class AnalysisOrchestrator:
                 self.chart_generator.generate_chart_from_df_cached, 
                 ohlcv_df, ticker, interval
             )
-            if chart_bytes:
+            
+            if chart_bytes and len(chart_bytes) > 0:
                 with open(chart_path, 'wb') as f:
                     f.write(chart_bytes)
+                print(f"📊 Chart Generation: Success - {len(chart_bytes)} bytes written to {chart_path}")
                 return True
-            return False
+            else:
+                print(f"❌ Chart Generation: Failed - empty or None chart_bytes for {ticker}")
+                return False
+                
         except Exception as e:
-            print(f"Error in cached chart generation: {e}")
+            print(f"❌ Chart Generation: Exception for {ticker}: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
 async def main_test():
