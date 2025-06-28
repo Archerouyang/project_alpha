@@ -264,7 +264,14 @@ class AnalysisOrchestrator:
     async def _generate_chart_cached(self, ohlcv_df: pd.DataFrame, ticker: str, interval: str, chart_path: str) -> bool:
         """使用缓存版本生成图表的辅助方法"""
         try:
-            chart_bytes, _ = self.chart_generator.generate_chart_from_df_cached(ohlcv_df, ticker, interval)
+            # 在线程池中执行同步的Playwright调用
+            import asyncio
+            loop = asyncio.get_event_loop()
+            chart_bytes, _ = await loop.run_in_executor(
+                None, 
+                self.chart_generator.generate_chart_from_df_cached, 
+                ohlcv_df, ticker, interval
+            )
             if chart_bytes:
                 with open(chart_path, 'wb') as f:
                     f.write(chart_bytes)

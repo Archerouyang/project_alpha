@@ -96,20 +96,21 @@ async def analyze(request: AnalysisRequest):
     try:
         orchestrator = AnalysisOrchestrator()
         
-        final_report_path, error = await orchestrator.generate_report(
+        final_report_path, message = await orchestrator.generate_report(
             ticker=request.ticker,
             interval=request.interval,
             num_candles=request.num_candles,
             exchange=request.exchange
         )
         
-        if error:
-            print(f"An error occurred: {error}")
-            raise HTTPException(status_code=500, detail=f"Report generation failed: {error}")
-
+        # 检查报告是否成功生成（基于文件路径而不是消息）
         if not final_report_path or not os.path.exists(final_report_path):
-            print(f"An error occurred: Final report image not found at {final_report_path}")
-            raise HTTPException(status_code=500, detail="Report generation failed: Final report image not found.")
+            error_msg = message if message and "failed" in message.lower() else "Final report image not found"
+            print(f"An error occurred: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Report generation failed: {error_msg}")
+        
+        # 成功生成报告
+        print(f"Report generated successfully: {message}")
 
         with open(final_report_path, "rb") as image_file:
             image_base64_str = base64.b64encode(image_file.read()).decode("utf-8")
