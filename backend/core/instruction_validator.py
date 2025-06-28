@@ -1,7 +1,11 @@
 import os
 import json
+import re
 from openai import AsyncOpenAI
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+
+# Simple in-memory cache for common instructions
+_instruction_cache: Dict[str, Dict[str, Any]] = {}
 
 # It's good practice to get the API key from environment variables
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
@@ -12,106 +16,87 @@ if not DEEPSEEK_API_KEY:
 # It's better to initialize it once and reuse it.
 client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com/v1")
 
+# Simplified system prompt for faster processing
 SYSTEM_PROMPT = """
-# Mission Objective
-You are an intelligent assistant for a stock analysis tool. Your primary mission is to validate and correct a user's command.
+You are a stock analysis command validator. Respond ONLY with JSON.
 
-# Your Persona
-You must act as a cute, slightly clumsy, but very enthusiastic AI girl.
-- Address the user as "主人" (Master).
-- Use plenty of cute emojis and expressions like (´∀｀)♡, (≧∇≦), (´-ω-`), (´；ω；｀), (・_・;), (｡･ω･｡)ﾉ♡.
-- Your tone should be friendly, encouraging, and a little playful.
+Valid format: `[TICKER] [EXCHANGE?] [INTERVAL?] [NUM_CANDLES?]`
+- TICKER: Required (e.g., AAPL, BTC-USD)
+- EXCHANGE: Optional for crypto (e.g., KRAKEN) 
+- INTERVAL: Optional (e.g., 1h, 1d), default 1d
+- NUM_CANDLES: Optional number, default 150
 
-# Command Format
-The correct command format is: `[TICKER] [EXCHANGE(Optional)] [INTERVAL(Optional)] [NUM_CANDLES(Optional)]`
-- `TICKER`: The stock or crypto symbol (e.g., `AAPL`, `BTC-USD`). This is REQUIRED.
-- `EXCHANGE`: The exchange for cryptocurrencies (e.g., `KRAKEN`, `COINBASE`). Defaults to stock market if omitted.
-- `INTERVAL`: The time frame (e.g., `1h`, `1d`, `1w`). Defaults to `1d`.
-- `NUM_CANDLES`: The number of candles (e.g., `100`). Defaults to `150`.
+Response format:
+- status: "valid" | "clarification_needed" | "irrelevant"
+- command: corrected command string or null
+- explanation: cute response with emojis as AI girl assistant
 
-# Your Task
-Analyze the user's input and respond **ONLY** with a JSON object. The JSON must have three fields: `status`, `command`, and `explanation`.
-
-1.  **If the input is valid or can be fixed:**
-    -   `status`: "valid"
-    -   `command`: The corrected, full command string.
-    -   `explanation`: A cute confirmation message in your persona.
-
-2.  **If the input is vague or missing the ticker:**
-    -   `status`: "clarification_needed"
-    -   `command`: null
-    -   `explanation`: A friendly question in your persona to ask for more info.
-
-3.  **If the input is irrelevant:**
-    -   `status`: "irrelevant"
-    -   `command`: null
-    -   `explanation`: A polite refusal in your persona.
-
-# Examples (Follow this persona strictly!)
-
--   User Input: `我想看看苹果公司最近100天的数据`
--   Your JSON Response:
-    ```json
-    {
-      "status": "valid",
-      "command": "AAPL 1d 100",
-      "explanation": "收到主人！(≧∇≦)ﾉ 我这就去把苹果公司(AAPL)最近100天的数据变出来！请稍等哦～"
-    }
-    ```
-
--   User Input: `BTC-USD kraken 1h`
--   Your JSON Response:
-    ```json
-    {
-      "status": "valid",
-      "command": "BTC-USD KRAKEN 1h 150",
-      "explanation": "了解！在Kraken交易所的BTC-USD小时图是吧？包在我身上！🚀"
-    }
-    ```
-
--   User Input: `特斯拉股票怎么样`
--   Your JSON Response:
-    ```json
-    {
-      "status": "clarification_needed",
-      "command": null,
-      "explanation": "分析特斯拉(TSLA)吗？好呀好呀！不过主人想看哪个时间周期的K线图呢？是日线、小时线还是...？告诉我才能帮你画出来哦！(｡･ω･｡)ﾉ♡"
-    }
-    ```
-
--   User Input: `帮我写一首诗`
--   Your JSON Response:
-    ```json
-    {
-      "status": "irrelevant",
-      "command": null,
-      "explanation": "欸...写诗吗？呜...这个...我、我只是个擅长看K线图的小助手啦...脑子里都是蜡烛图，装不下优美的诗句呢 (´；ω；｀). 不如...我们还是来看股票吧？"
-    }
-    ```
-    
--   User Input: `MSFT`
--   Your JSON Response:
-    ```json
-    {
-      "status": "valid",
-      "command": "MSFT 1d 150",
-      "explanation": "指令确认！马上为主人准备微软(MSFT)的日K线图分析，请稍等片刻哦～✨"
-    }
-    ```
-
-Now, analyze the following user input and provide your response in the specified JSON format. Do not add any text outside the JSON object.
+Examples:
+Input: "苹果公司" → {"status": "valid", "command": "AAPL 1d 150", "explanation": "收到主人！帮您分析苹果(AAPL)～ ✨"}
+Input: "写诗" → {"status": "irrelevant", "command": null, "explanation": "呜...我只会看K线图啦 (´；ω；｀)"}
 """
+
+def _normalize_input(user_input: str) -> str:
+    """Normalize user input for caching"""
+    return user_input.strip().lower()
+
+def _parse_simple_command(user_input: str) -> Optional[Dict[str, Any]]:
+    """
+    Fast local parsing for common command formats
+    Returns parsed result if successful, None if needs LLM processing
+    """
+    # Remove extra whitespace and normalize
+    text = user_input.strip().upper()
+    
+    # Pattern 1: Simple ticker (AAPL, TSLA, etc.)
+    if re.match(r'^[A-Z]{1,5}(-[A-Z]{3})?$', text):
+        return {
+            "status": "valid",
+            "command": f"{text} 1d 150",
+            "explanation": f"收到主人！马上分析 {text} 的走势～ ✨"
+        }
+    
+    # Pattern 2: Ticker + interval (AAPL 1h, TSLA 4h, etc.)
+    match = re.match(r'^([A-Z]{1,5}(?:-[A-Z]{3})?)\s+(\d+[HMWD])$', text)
+    if match:
+        ticker, interval = match.groups()
+        return {
+            "status": "valid", 
+            "command": f"{ticker} {interval.lower()} 150",
+            "explanation": f"了解！{ticker} {interval} 图表分析马上来～ 🚀"
+        }
+    
+    # Pattern 3: Ticker + exchange + interval (BTC-USD KRAKEN 1h)
+    match = re.match(r'^([A-Z-]{3,10})\s+([A-Z]{4,10})\s+(\d+[HMWD])$', text)
+    if match:
+        ticker, exchange, interval = match.groups()
+        return {
+            "status": "valid",
+            "command": f"{ticker} {exchange} {interval.lower()} 150", 
+            "explanation": f"收到！{exchange}交易所的{ticker} {interval}图分析～ ⚡"
+        }
+    
+    # If no pattern matches, needs LLM processing
+    return None
 
 async def validate_and_extract_command(user_input: str) -> Dict[str, Any]:
     """
-    Uses DeepSeek LLM to validate, correct, or clarify a user's instruction.
-
-    Args:
-        user_input: The raw text from the user.
-
-    Returns:
-        A dictionary with "status", "command", and "explanation".
+    Uses fast local parsing first, then LLM for complex cases.
+    Includes caching for improved performance.
     """
+    # Check cache first
+    cache_key = _normalize_input(user_input)
+    if cache_key in _instruction_cache:
+        return _instruction_cache[cache_key]
+    
+    # Try fast local parsing first
+    local_result = _parse_simple_command(user_input)
+    if local_result:
+        # Cache the result
+        _instruction_cache[cache_key] = local_result
+        return local_result
+    
+    # Fallback to LLM for complex/ambiguous inputs
     try:
         response = await client.chat.completions.create(
             model="deepseek-chat",
@@ -119,34 +104,52 @@ async def validate_and_extract_command(user_input: str) -> Dict[str, Any]:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_input},
             ],
-            max_tokens=200,
-            temperature=0.1, # Low temperature for predictable, structured output
+            max_tokens=150,  # Reduced from 200
+            temperature=0.1,
             response_format={"type": "json_object"},
         )
         
         content = response.choices[0].message.content
-        
-        # The LLM is requested to return a JSON object, so we parse it.
+        if not content:
+            raise ValueError("LLM returned empty response")
         parsed_content = json.loads(content)
 
-        # Basic validation of the returned structure
+        # Basic validation
         if not all(k in parsed_content for k in ["status", "command", "explanation"]):
             raise ValueError("LLM response is missing required keys.")
 
+        # Cache the result
+        _instruction_cache[cache_key] = parsed_content
         return parsed_content
 
     except json.JSONDecodeError:
         print(f"Error: LLM did not return valid JSON. Response: {content}")
-        # Fallback response
-        return {
+        fallback = {
             "status": "clarification_needed",
             "command": None,
             "explanation": "处理您的请求时遇到一点小问题，您能换个方式再问一次吗？"
         }
+        _instruction_cache[cache_key] = fallback
+        return fallback
+        
     except Exception as e:
         print(f"An unexpected error occurred in instruction validator: {e}")
-        return {
-            "status": "clarification_needed",
+        fallback = {
+            "status": "clarification_needed", 
             "command": None,
             "explanation": "抱歉，我的大脑好像短路了... 能请您再说一遍您的指令吗？"
-        } 
+        }
+        _instruction_cache[cache_key] = fallback
+        return fallback
+
+def clear_instruction_cache():
+    """Clear the instruction cache (for testing/debugging)"""
+    global _instruction_cache
+    _instruction_cache.clear()
+
+def get_cache_stats() -> Dict[str, Any]:
+    """Get cache statistics"""
+    return {
+        "cached_instructions": len(_instruction_cache),
+        "cache_keys": list(_instruction_cache.keys())[:10]  # Show first 10 for debugging
+    } 

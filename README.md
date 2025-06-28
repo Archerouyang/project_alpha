@@ -4,8 +4,15 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688.svg)](https://fastapi.tiangolo.com/)
 [![Cache](https://img.shields.io/badge/Cache-Smart%20Optimized-orange.svg)](https://github.com/Archerouyang/project_alpha)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-alphavie.cn-blue.svg)](https://alphavie.cn)
 
 一个基于AI的金融技术分析服务，通过Web界面提供股票和加密货币的专业技术分析报告。
+
+## 🌟 在线体验
+
+**🔗 [立即体验](https://alphavie.cn)** - 无需安装，直接使用！
+
+访问 **[alphavie.cn](https://alphavie.cn)** 体验完整的AI金融分析服务。
 
 ## ✨ 主要特性
 
@@ -82,7 +89,11 @@ graph TD
 
 ## 🚀 快速启动
 
-### 1. 环境准备
+> 💡 **提示**: 想要立即体验？直接访问 [alphavie.cn](https://alphavie.cn) 无需本地安装！
+
+### 本地部署
+
+#### 1. 环境准备
 ```bash
 # 克隆项目
 git clone <your-repository-url>
@@ -96,7 +107,7 @@ uv venv && .venv\Scripts\activate  # Windows
 uv pip install -r requirements.txt --prerelease=allow
 ```
 
-### 2. 配置API密钥
+#### 2. 配置API密钥
 创建 `.env` 文件：
 ```env
 DEEPSEEK_API_KEY="your_deepseek_api_key"
@@ -107,7 +118,7 @@ FMP_API_KEY="your_fmp_api_key"
 - [DeepSeek API](https://platform.deepseek.com/) - AI分析
 - [Financial Modeling Prep](https://financialmodelingprep.com/developer/docs) - 市场数据
 
-### 3. 安装浏览器 & 启动
+#### 3. 安装浏览器 & 启动
 ```bash
 # 安装Playwright浏览器（图表生成必需）
 playwright install chromium
@@ -116,7 +127,7 @@ playwright install chromium
 uvicorn main:app --reload
 ```
 
-### 4. 访问服务
+#### 4. 访问服务
 打开浏览器访问 `http://127.0.0.1:8000`
 
 ## 💡 使用说明
@@ -144,10 +155,12 @@ uvicorn main:app --reload
 ### 缓存管理API
 ```bash
 GET  /api/cache/stats      # 缓存统计
-POST /api/cache/clear      # 清理过期缓存
+POST /api/cache/clear      # 清理过期缓存  
 GET  /api/performance/stats # 性能统计
 GET  /api/health           # 系统健康检查
 ```
+
+> 🌐 **在线API**: 这些API端点在 [alphavie.cn](https://alphavie.cn) 也可直接访问，如: `https://alphavie.cn/api/health`
 
 ## 🔧 故障排除
 

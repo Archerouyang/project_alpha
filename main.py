@@ -83,12 +83,108 @@ async def validate_instruction(request: InstructionValidationRequest):
     """
     Validates, corrects, or asks for clarification on a user's instruction using an LLM.
     """
-    # This is a placeholder. We will implement the actual logic in a new module.
-    # For now, let's simulate a "valid" response for testing.
     from backend.core.instruction_validator import validate_and_extract_command
     
     response = await validate_and_extract_command(request.user_input)
     return response
+
+@app.get("/api/instruction/cache/stats")
+async def get_instruction_cache_stats():
+    """
+    获取指令缓存统计信息，用于监控优化效果
+    """
+    try:
+        from backend.core.instruction_validator import get_cache_stats
+        stats = get_cache_stats()
+        return {"success": True, "cache_stats": stats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get instruction cache stats: {str(e)}")
+
+@app.post("/api/instruction/cache/clear")
+async def clear_instruction_cache():
+    """
+    清空指令缓存（调试用）
+    """
+    try:
+        from backend.core.instruction_validator import clear_instruction_cache
+        clear_instruction_cache()
+        return {"success": True, "message": "Instruction cache cleared successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear instruction cache: {str(e)}")
+
+@app.post("/api/smart_analyze", response_model=AnalysisResponse)
+async def smart_analyze(request: InstructionValidationRequest):
+    """
+    智能分析端点：接受自然语言输入，自动验证指令并生成分析报告
+    结合了指令验证和数据分析的完整流程
+    """
+    try:
+        from backend.core.instruction_validator import validate_and_extract_command
+        
+        # Step 1: 验证和解析指令
+        print(f"正在理解指令: {request.user_input}")
+        validation_result = await validate_and_extract_command(request.user_input)
+        
+        if validation_result["status"] != "valid":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid instruction: {validation_result.get('explanation', 'Unknown error')}"
+            )
+        
+        # Step 2: 解析命令参数
+        command = validation_result["command"]
+        if not command:
+            raise HTTPException(status_code=400, detail="No valid command extracted from input")
+        
+        # 解析命令格式: "TICKER [EXCHANGE] INTERVAL NUM_CANDLES"
+        parts = command.strip().split()
+        if len(parts) < 3:
+            raise HTTPException(status_code=400, detail=f"Invalid command format: {command}")
+        
+        ticker = parts[0]
+        # 检查是否有exchange（如果第二个参数不是时间间隔格式）
+        if len(parts) == 4 and not parts[1].endswith(('h', 'd', 'm', 'w')):
+            exchange = parts[1]
+            interval = parts[2]
+            num_candles = int(parts[3])
+        else:
+            exchange = None
+            interval = parts[1]
+            num_candles = int(parts[2])
+        
+        print(f"解析后参数: ticker={ticker}, exchange={exchange}, interval={interval}, num_candles={num_candles}")
+        
+        # Step 3: 执行分析
+        orchestrator = AnalysisOrchestrator()
+        
+        final_report_path, message = await orchestrator.generate_report(
+            ticker=ticker,
+            interval=interval,
+            num_candles=num_candles,
+            exchange=exchange
+        )
+        
+        # 检查报告是否成功生成
+        if not final_report_path or not os.path.exists(final_report_path):
+            error_msg = message if message and "failed" in message.lower() else "Final report image not found"
+            print(f"An error occurred: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Report generation failed: {error_msg}")
+        
+        # 成功生成报告
+        print(f"Report generated successfully: {message}")
+
+        with open(final_report_path, "rb") as image_file:
+            image_base64_str = base64.b64encode(image_file.read()).decode("utf-8")
+
+        return AnalysisResponse(image=image_base64_str)
+        
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"An unexpected error occurred in /api/smart_analyze: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {str(e)}")
 
 @app.post("/api/analyze", response_model=AnalysisResponse)
 async def analyze(request: AnalysisRequest):
