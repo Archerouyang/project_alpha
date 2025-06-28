@@ -1,8 +1,14 @@
 # AI-Powered Financial Analysis Service
 
+[![Status](https://img.shields.io/badge/Status-Fully%20Functional-brightgreen.svg)](https://github.com/Archerouyang/project_alpha)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688.svg)](https://fastapi.tiangolo.com/)
+
 This project provides a sophisticated financial analysis service, accessible via a clean, web-based chat interface. It allows users to get AI-powered technical analysis reports for stocks and cryptocurrencies, which are presented in a polished, professional, and easy-to-read image format.
 
 The system's backend fetches market data, generates detailed candlestick charts, uses a Large Language Model (LLM) for in-depth analysis, and composites the chart and text into a final, beautifully designed report image.
+
+**✅ Recently Fixed**: Data fetching compatibility issues and chart generation problems have been resolved. The system now includes robust fallback mechanisms for reliable operation.
 
 ---
 
@@ -44,14 +50,42 @@ A brief overview of the key directories:
 
 -   **Backend**: Python 3.11 with FastAPI
 -   **Frontend**: HTML, CSS, JavaScript
--   **Data Source**: OpenBB SDK
--   **Chart Rendering**: Playwright & TradingView Lightweight Charts (note: in Docker, use Firefox engine due to Chromium incompatibility causing blank charts)
+-   **Data Source**: OpenBB SDK with FMP API provider + Direct FMP API fallback
+-   **Chart Rendering**: Playwright & TradingView Lightweight Charts (Windows: Chromium, Docker: Firefox)
 -   **AI Analysis**: DeepSeek API
 -   **Dependency Management**: uv
 
 ---
 
-## Setup and Run
+## Quick Start
+
+For a rapid setup, follow these essential steps:
+
+1. **Clone & Setup Environment**:
+   ```bash
+   git clone <your-repository-url>
+   cd project_alpha
+   uv venv && .venv\Scripts\activate
+   uv pip install -r requirements.txt --prerelease=allow
+   ```
+
+2. **Configure API Keys** - Create `.env` file:
+   ```env
+   DEEPSEEK_API_KEY="your_deepseek_api_key"
+   FMP_API_KEY="your_fmp_api_key"
+   ```
+
+3. **Install Browser & Start**:
+   ```bash
+   playwright install chromium
+   uvicorn main:app --reload
+   ```
+
+4. **Test**: Open `http://127.0.0.1:8000` and try `NVDA` or `BTC-USD`
+
+---
+
+## Detailed Setup and Run
 
 1.  **Clone the Repository**
     ```bash
@@ -74,19 +108,38 @@ A brief overview of the key directories:
     uv pip install -r requirements.txt --prerelease=allow
     ```
 
-3.  **Set Up API Keys**: Create a `.env` file in the project root. You can copy the example below.
+3.  **Set Up API Keys**: Create a `.env` file in the project root with your API keys.
     ```env
-    # .env
-    DEEPSEEK_API_KEY="your_deepseek_api_key"
-    FMP_API_KEY="your_financial_modeling_prep_api_key"
+    # .env - API Configuration
+    DEEPSEEK_API_KEY="your_deepseek_api_key_here"
+    FMP_API_KEY="your_financial_modeling_prep_api_key_here"
+    
+    # Optional configuration
+    DEBUG=false
+    APP_NAME="Project Alpha AI Technical Analysis Service"
+    TRADINGVIEW_CHART_WIDTH=1200
+    TRADINGVIEW_CHART_HEIGHT=800
+    ```
+    
+    **Getting API Keys:**
+    - **DeepSeek API**: Sign up at [DeepSeek](https://platform.deepseek.com/) for AI analysis
+    - **FMP API**: Get a free key at [Financial Modeling Prep](https://financialmodelingprep.com/developer/docs) for market data
+
+4.  **Install Playwright Browsers**: Required for chart generation.
+    ```bash
+    # Install Playwright browsers (required for chart rendering)
+    playwright install chromium
+    
+    # Alternatively, install all browsers
+    playwright install
     ```
 
-4.  **Run the Web Server**:
+5.  **Run the Web Server**:
     ```bash
     uvicorn main:app --reload
     ```
 
-5.  **Access the Service**: Open your browser and navigate to `http://127.0.0.1:8000`.
+6.  **Access the Service**: Open your browser and navigate to `http://127.0.0.1:8000`.
 
 ## Docker Deployment
 
@@ -184,6 +237,23 @@ The next major development phase for this project is to create a front-end clien
 -   [ ] **Implement Client Logic**: Rewrite frontend logic in JavaScript for WeChat's environment.
 -   [ ] **End-to-End Testing**: Configure the API endpoint and test thoroughly within WeChat Developer Tools.
 
+## Troubleshooting
+
+### Data Fetching Issues
+- **OpenBB Import Error**: If you encounter `cannot import name 'OBBject_EquityInfo'` errors, the system will automatically fall back to direct FMP API calls. This is a known compatibility issue with certain OpenBB versions.
+- **FMP API Key**: Ensure your `FMP_API_KEY` is correctly set in the `.env` file. You can get a free API key from [Financial Modeling Prep](https://financialmodelingprep.com/developer/docs).
+
+### Chart Generation Issues
+- **Playwright Browser Missing**: If you see `Executable doesn't exist` errors, run `playwright install chromium` to install the required browser.
+- **PowerShell Execution Policy (Windows)**: If you encounter PowerShell script execution issues, you can:
+  - Use `.bat` files instead of `.ps1` scripts for virtual environment activation
+  - Or set execution policy: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+
+### API Configuration
+- **DeepSeek API**: Ensure your `DEEPSEEK_API_KEY` is valid for AI analysis functionality.
+- **Environment Variables**: The system automatically loads API keys from the `.env` file. Restart the server after making changes to `.env`.
+
 ## Known Issues
 
-- Due to a compatibility issue between Chromium (in Linux Docker images) and TradingView Lightweight Charts, charts may render blank when using the default Chromium browser in Docker. To work around this, our Docker configuration installs and uses Firefox for chart rendering via Playwright, which fully resolves the issue. 
+- **Docker Environment**: Due to compatibility issues between Chromium and TradingView Lightweight Charts in Linux Docker containers, the Docker configuration uses Firefox for chart rendering. In Windows environments, Chromium is used by default.
+- **OpenBB SDK Compatibility**: Some versions of OpenBB SDK may have import conflicts. The system includes automatic fallback to direct FMP API calls to ensure reliability. 

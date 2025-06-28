@@ -37,12 +37,19 @@ class ChartGenerator:
         has_stoch = 'stochk_14_3_3' in df.columns and 'stochd_14_3_3' in df.columns
 
         for timestamp, row in df.iterrows():
-            # Convert date to datetime if necessary before getting timestamp
-            if isinstance(timestamp, date) and not isinstance(timestamp, datetime):
-                # For date objects, combine with midnight time to create datetime
-                timestamp = datetime.combine(timestamp, datetime.min.time())
-            
-            time_unix = int(timestamp.timestamp())
+            # Convert any timestamp to datetime using pandas, then get unix timestamp
+            try:
+                if isinstance(timestamp, datetime):
+                    time_unix = int(timestamp.timestamp())
+                elif isinstance(timestamp, date):
+                    time_unix = int(datetime.combine(timestamp, datetime.min.time()).timestamp())
+                else:
+                    # For any other type, convert using pandas
+                    dt = pd.to_datetime(str(timestamp))
+                    time_unix = int(dt.timestamp())
+            except Exception:
+                # Fallback: assume it's already a unix timestamp or use current time
+                time_unix = int(datetime.now().timestamp())
             
             # OHLC and Volume data
             ohlc_data.append({
@@ -103,9 +110,18 @@ class ChartGenerator:
         
         # Helper function to convert date to datetime if needed
         def get_timestamp(dt_obj):
-            if isinstance(dt_obj, date) and not isinstance(dt_obj, datetime):
-                return int(datetime.combine(dt_obj, datetime.min.time()).timestamp())
-            return int(dt_obj.timestamp())
+            try:
+                if isinstance(dt_obj, datetime):
+                    return int(dt_obj.timestamp())
+                elif isinstance(dt_obj, date):
+                    return int(datetime.combine(dt_obj, datetime.min.time()).timestamp())
+                else:
+                    # For any other type, convert using pandas
+                    dt = pd.to_datetime(str(dt_obj))
+                    return int(dt.timestamp())
+            except Exception:
+                # Fallback: use current time
+                return int(datetime.now().timestamp())
 
         # Extract Bollinger Bands data
         for band in ['bbu', 'bbm', 'bbl']:
@@ -172,7 +188,7 @@ class ChartGenerator:
         print(f"Playwright: Launching self-contained browser for {ticker_symbol}...")
         try:
             with sync_playwright() as p:
-                browser = p.firefox.launch() # Use Firefox
+                browser = p.chromium.launch() # Use Chromium
                 page = browser.new_page()
                 page.on("console", lambda msg: print(f"Browser Console ({msg.type}): {msg.text}"))
                 

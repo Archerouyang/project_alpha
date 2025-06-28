@@ -2,9 +2,9 @@
 import pandas as pd
 import asyncio
 import os
+import requests
 from datetime import datetime, timedelta, date
 from typing import Tuple, List, Optional, Dict, Any
-from openbb import obb
 from dotenv import load_dotenv
 import math
 
@@ -51,6 +51,18 @@ def map_interval_to_openbb(interval_str: str) -> str:
     if interval_lower in ["1d", "1day", "daily"]: return "1d"
     return interval_str
 
+def map_interval_to_fmp(interval_str: str) -> str:
+    """Maps intervals to FMP API format."""
+    interval_lower = interval_str.lower()
+    if interval_lower in ["1m", "1min"]: return "1min"
+    if interval_lower in ["5m", "5min"]: return "5min"
+    if interval_lower in ["15m", "15min"]: return "15min"
+    if interval_lower in ["30m", "30min"]: return "30min"
+    if interval_lower in ["1h", "60m", "60min", "1hour"]: return "1hour"
+    if interval_lower in ["4h", "240m", "4hour"]: return "4hour"
+    if interval_lower in ["1d", "1day", "daily"]: return "1day"
+    return "1day"
+
 def _standardize_df_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Standardizes the column names of the OHLCV DataFrame."""
     rename_map = {}
@@ -79,6 +91,68 @@ def _standardize_df_columns(df: pd.DataFrame) -> pd.DataFrame:
 # This helps in distinguishing between a crypto ticker and a stock ticker.
 KNOWN_CRYPTO_EXCHANGES = ["coinbase", "binance", "kraken", "kucoin", "gateio", "bitfinex"]
 
+def get_data_via_fmp_direct(
+    ticker: str,
+    interval: str,
+    num_candles: int = 150,
+    is_crypto: bool = False
+) -> Optional[pd.DataFrame]:
+    """
+    直接通过FMP API获取数据，绕过OpenBB的导入问题
+    """
+    fmp_api_key = os.getenv("FMP_API_KEY")
+    if not fmp_api_key:
+        print("CRITICAL: FMP_API_KEY not found in environment.")
+        return None
+    
+    fmp_interval = map_interval_to_fmp(interval)
+    
+    try:
+        if is_crypto:
+            # FMP crypto endpoint
+            # Note: FMP crypto symbols usually follow format like BTCUSD
+            crypto_symbol = ticker.replace('-', '')
+            url = f"https://financialmodelingprep.com/api/v3/historical-chart/{fmp_interval}/{crypto_symbol}"
+            params = {"apikey": fmp_api_key}
+        else:
+            # FMP stock endpoint  
+            url = f"https://financialmodelingprep.com/api/v3/historical-chart/{fmp_interval}/{ticker}"
+            params = {"apikey": fmp_api_key}
+        
+        print(f"Fetching from FMP API: {url}")
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if not data or len(data) == 0:
+            print(f"No data returned from FMP for {ticker}")
+            return None
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+        
+        # FMP returns data with 'date' column, convert it to datetime index
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+            df.set_index('date', inplace=True)
+        
+        # Sort by date (FMP sometimes returns unsorted data)
+        df.sort_index(inplace=True)
+        
+        # Standardize column names
+        df = _standardize_df_columns(df)
+        
+        # Take last num_candles
+        df_trimmed = df.tail(num_candles)
+        
+        print(f"Successfully fetched {len(df_trimmed)} data points from FMP for '{ticker}'.")
+        return df_trimmed
+        
+    except Exception as e:
+        print(f"Error fetching data from FMP API for {ticker}: {e}")
+        return None
+
 def get_ohlcv_data(
     ticker: str,
     interval: str,
@@ -86,41 +160,38 @@ def get_ohlcv_data(
     exchange: Optional[str] = None
 ) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     """
-    Fetches OHLCV data for a given ticker, intelligently handling crypto vs. equity.
+    Fetches OHLCV data for a given ticker, using OpenBB with FMP provider or direct FMP API as fallback.
     """
     print(f"Fetching data for '{ticker}' on exchange '{exchange or 'default'}' aiming for {num_candles} candles, interval '{interval}'...")
-    # 将用户输入的 interval 转换为 OpenBB 所需的标准值
-    mapped_interval = map_interval_to_openbb(interval)
-    print(f"Mapped interval '{interval}' to OpenBB interval '{mapped_interval}'")
-
-    fmp_api_key = os.getenv("FMP_API_KEY")
-    if not fmp_api_key:
-        print("CRITICAL: FMP_API_KEY not found in environment.")
-        raise ValueError("Missing FMP_API_KEY.")
-    obb.user.credentials.fmp_api_key = fmp_api_key
-
+    
     # Determine if the asset is crypto or equity
-    # A simple heuristic: if an exchange is provided and it's a known crypto exchange,
-    # or if the ticker contains a common crypto separator like '-', assume it's crypto.
     is_crypto = (exchange and exchange.lower() in KNOWN_CRYPTO_EXCHANGES) or ('-' in ticker)
     
-    days_to_fetch = _calculate_days_to_fetch(num_candles, interval, is_crypto)
-    start_date = (datetime.now() - timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
-    
+    # First try OpenBB
     try:
+        from openbb import obb
+        print("Trying OpenBB with FMP provider...")
+        
+        # Configure FMP API key for OpenBB using environment variable
+        fmp_api_key = os.getenv("FMP_API_KEY")
+        if not fmp_api_key:
+            raise ValueError("FMP_API_KEY not found in environment")
+        
+        mapped_interval = map_interval_to_openbb(interval)
+        days_to_fetch = _calculate_days_to_fetch(num_candles, interval, is_crypto)
+        start_date = (datetime.now() - timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
+        
+        # Try OpenBB API call - the API key should be automatically picked up from environment
         if is_crypto:
-            print(f"-> Detected as CRYPTO. Using obb.crypto.price.historical with interval '{mapped_interval}'...")
-            # For crypto, the exchange is a direct parameter.
+            print(f"-> Using OpenBB crypto API for {ticker}")
             data = obb.crypto.price.historical(
                 symbol=ticker,
                 start_date=start_date,
                 interval=mapped_interval,
-                exchange=exchange, # Pass the exchange here
                 provider="fmp"
             )
         else:
-            print(f"-> Detected as EQUITY. Using obb.equity.price.historical with interval '{mapped_interval}'...")
-            # For equity, FMP is the provider and doesn't need an 'exchange' parameter.
+            print(f"-> Using OpenBB equity API for {ticker}")
             data = obb.equity.price.historical(
                 symbol=ticker,
                 start_date=start_date,
@@ -130,24 +201,30 @@ def get_ohlcv_data(
         
         df = data.to_df()
         if df.empty:
-            print(f"No data fetched for ticker {ticker} (DataFrame is empty).")
-            return None, None
-
+            raise ValueError("OpenBB returned empty DataFrame")
+        
         # Critical Step: Ensure the DataFrame's index is named 'date'.
-        # This name is relied upon by downstream processes.
         df.index.name = 'date'
-
+        
         # Trim the DataFrame to the requested number of candles.
         df_trimmed = df.tail(num_candles)
-
-        print(f"Successfully fetched {len(df_trimmed)} data points for '{ticker}'.")
+        
+        print(f"Successfully fetched {len(df_trimmed)} data points via OpenBB for '{ticker}'.")
         return df, df_trimmed
-
-    except Exception as e:
-        print(f"An error occurred while fetching data for {ticker}: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, None
+        
+    except Exception as openbb_error:
+        print(f"OpenBB failed: {openbb_error}")
+        print("Falling back to direct FMP API...")
+        
+        # Fallback to direct FMP API
+        df_trimmed = get_data_via_fmp_direct(ticker, interval, num_candles, is_crypto)
+        
+        if df_trimmed is not None:
+            df_trimmed.index.name = 'date'
+            return df_trimmed, df_trimmed
+        else:
+            print(f"All data fetching methods failed for {ticker}")
+            return None, None
 
 def _calculate_days_to_fetch(num_candles: int, interval: str, is_crypto: bool) -> int:
     """Helper function to estimate the number of calendar days to fetch."""
