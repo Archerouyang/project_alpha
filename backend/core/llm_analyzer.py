@@ -58,8 +58,15 @@ Chart Patterns: 识别关键的支撑、阻力、趋势线或简单形态。
 
 def _get_deepseek_api_key() -> Optional[str]:
     """
-    Reads the DEEPSEEK_API_KEY from the .env file in the project root.
+    Gets the DEEPSEEK_API_KEY from environment variables first, then fallback to .env file.
     """
+    # First try to get from environment variables (Docker/system env)
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if api_key:
+        print("Successfully loaded DEEPSEEK_API_KEY from environment variables")
+        return api_key
+    
+    # Fallback to .env file if environment variable not found
     try:
         dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
         if not os.path.exists(dotenv_path):
@@ -71,6 +78,7 @@ def _get_deepseek_api_key() -> Optional[str]:
                 if line.strip() and not line.startswith('#'):
                     key, value = line.strip().split('=', 1)
                     if key.strip() == 'DEEPSEEK_API_KEY':
+                        print("Successfully loaded DEEPSEEK_API_KEY from .env file")
                         return value.strip().strip('"\'')
         return None
     except Exception as e:
