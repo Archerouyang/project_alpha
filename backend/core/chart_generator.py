@@ -51,21 +51,21 @@ class ChartGenerator:
                 # Fallback: assume it's already a unix timestamp or use current time
                 time_unix = int(datetime.now().timestamp())
             
-            # OHLC and Volume data
+            # OHLC and Volume data - ensure numeric values
             ohlc_data.append({
                 "time": time_unix,
-                "open": row['open'],
-                "high": row['high'],
-                "low": row['low'],
-                "close": row['close']
+                "open": float(row['open']),
+                "high": float(row['high']),
+                "low": float(row['low']),
+                "close": float(row['close'])
             })
             volume_color = 'rgba(0, 150, 136, 0.6)' if row['close'] >= row['open'] else 'rgba(255, 82, 82, 0.6)'
-            volume_data.append({"time": time_unix, "value": row['volume'], "color": volume_color})
+            volume_data.append({"time": time_unix, "value": float(row['volume']), "color": volume_color})
             
-            # Stochastic RSI data
+            # Stochastic RSI data - ensure numeric values
             if has_stoch and pd.notna(row['stochk_14_3_3']) and pd.notna(row['stochd_14_3_3']):
-                stoch_k_data.append({"time": time_unix, "value": row['stochk_14_3_3']})
-                stoch_d_data.append({"time": time_unix, "value": row['stochd_14_3_3']})
+                stoch_k_data.append({"time": time_unix, "value": float(row['stochk_14_3_3'])})
+                stoch_d_data.append({"time": time_unix, "value": float(row['stochd_14_3_3'])})
         
         print(f"Formatted OHLC data points: {len(ohlc_data)}")
         print(f"Formatted Volume data points: {len(volume_data)}")
@@ -128,7 +128,7 @@ class ChartGenerator:
             if band in df.columns:
                 band_df = df[[band]].dropna().reset_index()
                 indicator_data[band] = band_df.apply(
-                    lambda row: {'time': get_timestamp(row['date']), 'value': row[band]}, axis=1
+                    lambda row: {'time': get_timestamp(row['date']), 'value': float(row[band])}, axis=1
                 ).tolist()
 
         print(f"Formatted BBU data points: {len(indicator_data.get('bbu', []))}")
@@ -196,18 +196,47 @@ class ChartGenerator:
                 page.goto(template_url)
                 page.wait_for_function("typeof window.renderChart === 'function'")
 
-                page.evaluate(
-                    "(args) => window.renderChart(args)",
-                    {
-                        "ohlcData": ohlc_data, "volumeData": volume_data, "stochKData": stoch_k_data,
-                        "stochDData": stoch_d_data, "bbuData": indicator_data.get('bbu', []),
-                        "bbmData": indicator_data.get('bbm', []), "bblData": indicator_data.get('bbl', []),
-                        "tickerSymbol": ticker_symbol.upper(), "interval": interval,
-                        "chartWidth": 1280, "chartHeight": 720
-                    }
-                )
+                # Add debug information before calling renderChart
+                chart_args = {
+                    "ohlcData": ohlc_data, "volumeData": volume_data, "stochKData": stoch_k_data,
+                    "stochDData": stoch_d_data, "bbuData": indicator_data.get('bbu', []),
+                    "bbmData": indicator_data.get('bbm', []), "bblData": indicator_data.get('bbl', []),
+                    "tickerSymbol": ticker_symbol.upper(), "interval": interval,
+                    "chartWidth": 1280, "chartHeight": 720
+                }
                 
-                page.wait_for_timeout(2000)
+                print(f"Chart args - OHLC: {len(chart_args['ohlcData'])}, Volume: {len(chart_args['volumeData'])}")
+                if chart_args['ohlcData']:
+                    print(f"Sample OHLC data: {chart_args['ohlcData'][0]}")
+                
+                # Call renderChart with error handling
+                result = page.evaluate("""
+                    (args) => {
+                        console.log('renderChart called with args:', {
+                            ohlcDataLength: args.ohlcData.length,
+                            volumeDataLength: args.volumeData.length,
+                            tickerSymbol: args.tickerSymbol,
+                            interval: args.interval
+                        });
+                        
+                        if (args.ohlcData.length === 0) {
+                            console.error('No OHLC data provided!');
+                            return 'ERROR: No OHLC data';
+                        }
+                        
+                        try {
+                            return window.renderChart(args);
+                        } catch (error) {
+                            console.error('Error in renderChart:', error);
+                            return 'ERROR: ' + error.message;
+                        }
+                    }
+                """, chart_args)
+                
+                print(f"Chart render result: {result}")
+                
+                # Wait longer for chart rendering
+                page.wait_for_timeout(3000)
                 chart_element = page.query_selector('#chart-container-wrapper')
                 if not chart_element:
                     raise RuntimeError("Could not find '#chart-container-wrapper' element in HTML.")

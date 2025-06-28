@@ -287,7 +287,11 @@
             // mainChart.timeScale().scrollToPosition(-5, false); // scrolls 5 bars to the left from the last bar
 
             // Call this to ensure chart is rendered before screenshot
-            return new Promise(resolve => setTimeout(resolve, 500)); // Small delay for rendering
+            console.log("All charts rendered successfully!");
+            return new Promise(resolve => setTimeout(() => {
+                console.log("Chart rendering delay completed");
+                resolve('success');
+            }, 500)); // Small delay for rendering
         };
     </script>
 </body>

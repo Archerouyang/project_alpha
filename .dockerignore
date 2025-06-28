@@ -77,7 +77,6 @@ docker-compose*.yml
 
 # Development tools
 .github/
-scripts/
 
 # UV lock file (not needed in Docker)
 uv.lock 
